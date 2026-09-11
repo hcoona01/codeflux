@@ -1,0 +1,32 @@
+[
+  {
+    "id": "road-main-boulevard",
+    "name": "Main Gate to Unipolis Boulevard",
+    "category": "road",
+    "description": "Central paved avenue connecting Main Gate 1, Administrative Block, and Baldev Raj Mittal Unipolis.",
+    "coordinates": [
+      [75.704900, 31.253827],
+      [75.705100, 31.254000],
+      [75.705400, 31.254100],
+      [75.705600, 31.254100]
+    ],
+    "length_m": 120.5,
+    "created_by": "admin",
+    "created_at": "2026-09-12T00:00:00.000Z"
+  },
+  {
+    "id": "road-unimall-pathway",
+    "name": "UniMall Pedestrian Walkway",
+    "category": "walkway",
+    "description": "Tree-lined pedestrian promenade connecting UniMall front roundal with academic blocks 32 and 34.",
+    "coordinates": [
+      [75.706034, 31.256093],
+      [75.705000, 31.255500],
+      [75.703800, 31.255100],
+      [75.703200, 31.254700]
+    ],
+    "length_m": 310.2,
+    "created_by": "admin",
+    "created_at": "2026-09-12T00:00:00.000Z"
+  }
+]

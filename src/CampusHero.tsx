@@ -124,7 +124,11 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
   }
 }
 
-export default function CampusHero() {
+interface CampusHeroProps {
+  onOpenNavigator?: () => void
+}
+
+export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [isAnimating, setIsAnimating] = useState(false)
   const [isMobile, setIsMobile] = useState(
@@ -286,7 +290,13 @@ export default function CampusHero() {
                 <button
                   key={slide.tab}
                   type="button"
-                  onClick={() => goTo(i)}
+                  onClick={() => {
+                    if (selected && slide.tab === 'Navigation' && onOpenNavigator) {
+                      onOpenNavigator()
+                    } else {
+                      goTo(i)
+                    }
+                  }}
                   className="flex w-full items-center justify-center rounded-full px-2 py-1.5 text-center text-[10px] font-semibold tracking-wider uppercase sm:px-4 sm:py-2 sm:text-xs cursor-pointer transition-all duration-200"
                   style={{
                     color: '#fff',
@@ -469,7 +479,13 @@ export default function CampusHero() {
         {/* Bottom Right: CTA link */}
         <a
           href={active.href}
-          className="absolute right-4 bottom-5 sm:right-10 sm:bottom-16 z-[60] flex items-center no-underline"
+          onClick={(e) => {
+            if (active.tab === 'Navigation' && onOpenNavigator) {
+              e.preventDefault()
+              onOpenNavigator()
+            }
+          }}
+          className="absolute right-4 bottom-5 sm:right-10 sm:bottom-16 z-[60] flex items-center no-underline cursor-pointer"
           style={{
             fontFamily: 'Anton, sans-serif',
             fontSize: 'clamp(18px, 3.8vw, 54px)',
