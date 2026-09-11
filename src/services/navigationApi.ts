@@ -44,8 +44,27 @@ export interface RouteResult {
   steps: RouteStep[]
 }
 
-const LOCAL_STORAGE_PLACES_KEY = 'verto_omniroute_places_cache'
-const LOCAL_STORAGE_ROADS_KEY = 'verto_omniroute_roads_cache'
+const LOCAL_STORAGE_PLACES_KEY = 'verto_omniroute_places_v2'
+const LOCAL_STORAGE_ROADS_KEY = 'verto_omniroute_roads_v2'
+
+// Automatically purge legacy pre-fed cache from previous version
+try {
+  localStorage.removeItem('verto_omniroute_places_cache')
+  localStorage.removeItem('verto_omniroute_roads_cache')
+} catch {
+  // ignore
+}
+
+export function clearAllCampusData(): void {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_PLACES_KEY)
+    localStorage.removeItem(LOCAL_STORAGE_ROADS_KEY)
+    localStorage.removeItem('verto_omniroute_places_cache')
+    localStorage.removeItem('verto_omniroute_roads_cache')
+  } catch {
+    // ignore
+  }
+}
 
 export async function fetchPlaces(): Promise<Place[]> {
   try {
@@ -112,7 +131,7 @@ export async function savePlace(
 
 function updateLocalPlacesCache(place: Place) {
   const existing = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
-  let list: Place[] = campusPlacesData as Place[]
+  let list: Place[] = []
   if (existing) {
     try {
       list = JSON.parse(existing)
@@ -127,6 +146,19 @@ function updateLocalPlacesCache(place: Place) {
     list.unshift(place)
   }
   localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(list))
+}
+
+export async function deletePlace(placeId: string): Promise<void> {
+  const existing = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
+  if (existing) {
+    try {
+      const list: Place[] = JSON.parse(existing)
+      const filtered = list.filter((p) => p.id !== placeId)
+      localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(filtered))
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export async function updatePlace(
@@ -235,7 +267,7 @@ export async function saveRoad(
 
 function updateLocalRoadsCache(road: Road) {
   const existing = localStorage.getItem(LOCAL_STORAGE_ROADS_KEY)
-  let list: Road[] = campusRoadsData as Road[]
+  let list: Road[] = []
   if (existing) {
     try {
       list = JSON.parse(existing)

@@ -6,17 +6,19 @@ const CHARACTER_SRC =
 
 interface CharacterOverlayProps {
   onQuickNavigate?: (destinationId: string) => void
+  onOpenContribute?: () => void
+  places?: { id: string; name: string }[]
 }
 
 const TIPS = [
-  'Hey Verto! Need to find your lecture hall? Search any Block (32, 34, 38) in Explore!',
-  'Looking for a quick snack? Check out UniMall Front Roundal with top cafes & outlets!',
-  'Heading to sports practice? Switch to Walking or Cycling mode in Directions for the fastest loop.',
-  'Want real-world rooftop views? Click "Switch to Satellite" on the map!',
-  'Did you find a new landmark? Sign in to add places and walkways in the Contribute tab.',
+  'Welcome to Campus Navigator! Add and map any block, lab, or spot in the Contribute tab.',
+  'Need directions? Add origin and destination points to calculate walking or cycling routes.',
+  'Want real-world rooftop views? Click "Satellite View" on the map anytime!',
+  'Found an inaccurate location? Use "Fix Location" to adjust coordinates directly on the map.',
+  'Click anywhere on the map or drag the target pin to place landmarks precisely.',
 ]
 
-export default function CharacterOverlay({ onQuickNavigate }: CharacterOverlayProps) {
+export default function CharacterOverlay({ onQuickNavigate, onOpenContribute, places = [] }: CharacterOverlayProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [tipIndex, setTipIndex] = useState(0)
 
@@ -53,24 +55,24 @@ export default function CharacterOverlay({ onQuickNavigate }: CharacterOverlayPr
 
             {/* Quick Shortcuts */}
             <div className="mt-3 flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
-              <button
-                onClick={() => onQuickNavigate?.('lpu-unimall')}
-                className="flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-orange-700 border border-orange-200 hover:bg-orange-100 transition cursor-pointer"
-              >
-                <MapPin className="h-3 w-3" /> UniMall
-              </button>
-              <button
-                onClick={() => onQuickNavigate?.('lpu-block-34-library')}
-                className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 border border-blue-200 hover:bg-blue-100 transition cursor-pointer"
-              >
-                <Compass className="h-3 w-3" /> Library
-              </button>
-              <button
-                onClick={() => onQuickNavigate?.('lpu-main-gate-1')}
-                className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
-              >
-                <Navigation className="h-3 w-3" /> Gate 1
-              </button>
+              {places.length > 0 ? (
+                places.slice(0, 3).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => onQuickNavigate?.(p.id)}
+                    className="flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-orange-700 border border-orange-200 hover:bg-orange-100 transition cursor-pointer"
+                  >
+                    <MapPin className="h-3 w-3" /> {p.name}
+                  </button>
+                ))
+              ) : (
+                <button
+                  onClick={() => onOpenContribute?.()}
+                  className="flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-orange-700 border border-orange-200 hover:bg-orange-100 transition cursor-pointer"
+                >
+                  <MapPin className="h-3 w-3" /> ➕ Add First Place
+                </button>
+              )}
             </div>
           </div>
 
