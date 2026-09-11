@@ -59,6 +59,16 @@ const CATEGORY_COLORS: Record<string, string> = {
   hospital: '#e11d48', // rose
 }
 
+const CATEGORY_ICONS: Record<string, string> = {
+  academic: '🎓',
+  library: '📚',
+  student_spot: '☕',
+  hostel: '🏢',
+  gate: '🚪',
+  sports: '⚽',
+  hospital: '🏥',
+}
+
 export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) {
   const [pageVisible, setPageVisible] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
@@ -304,29 +314,67 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     places.forEach((place) => {
       const color = CATEGORY_COLORS[place.category] || '#ea580c'
 
-      // Custom marker DOM element
+      // Custom marker DOM element container positioned by Mapbox GL
       const el = document.createElement('div')
-      el.className = 'campus-pin-marker'
-      el.style.width = '30px'
-      el.style.height = '30px'
-      el.style.borderRadius = '50%'
-      el.style.backgroundColor = color
-      el.style.border = '2px solid #ffffff'
-      el.style.boxShadow = '0 3px 12px rgba(0,0,0,0.25)'
+      el.className = 'campus-pin-marker-container'
+      el.style.position = 'relative'
+      el.style.width = '32px'
+      el.style.height = '32px'
       el.style.cursor = 'pointer'
-      el.style.display = 'flex'
-      el.style.alignItems = 'center'
-      el.style.justifyContent = 'center'
-      el.style.color = '#ffffff'
-      el.style.fontSize = '14px'
-      el.style.transition = 'transform 0.15s ease'
-      el.innerHTML = '📍'
+      el.style.userSelect = 'none'
 
+      // Inner pin icon (scales on hover without affecting Mapbox's translate transform on el)
+      const pin = document.createElement('div')
+      pin.className = 'campus-pin-marker'
+      pin.style.width = '32px'
+      pin.style.height = '32px'
+      pin.style.borderRadius = '50%'
+      pin.style.backgroundColor = color
+      pin.style.border = '2px solid #ffffff'
+      pin.style.boxShadow = '0 3px 12px rgba(0,0,0,0.25)'
+      pin.style.display = 'flex'
+      pin.style.alignItems = 'center'
+      pin.style.justifyContent = 'center'
+      pin.style.color = '#ffffff'
+      pin.style.fontSize = '15px'
+      pin.style.transition = 'transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease'
+      pin.innerHTML = CATEGORY_ICONS[place.category] || '📍'
+
+      // Floating location name tag
+      const tag = document.createElement('div')
+      tag.className = 'campus-pin-tag'
+      tag.textContent = place.name
+      tag.style.position = 'absolute'
+      tag.style.top = '36px'
+      tag.style.left = '50%'
+      tag.style.transform = 'translateX(-50%)'
+      tag.style.padding = '2px 8px'
+      tag.style.borderRadius = '10px'
+      tag.style.backgroundColor = 'rgba(15, 23, 42, 0.88)'
+      tag.style.backdropFilter = 'blur(4px)'
+      tag.style.color = '#ffffff'
+      tag.style.fontSize = '11px'
+      tag.style.fontWeight = '600'
+      tag.style.whiteSpace = 'nowrap'
+      tag.style.pointerEvents = 'none'
+      tag.style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)'
+      tag.style.transition = 'transform 0.18s ease, background-color 0.18s ease'
+
+      el.appendChild(pin)
+      el.appendChild(tag)
+
+      // Hover scaling applied exclusively to inner elements
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.2)'
+        pin.style.transform = 'scale(1.2)'
+        pin.style.boxShadow = '0 6px 18px rgba(0,0,0,0.45)'
+        tag.style.transform = 'translateX(-50%) scale(1.05)'
+        tag.style.backgroundColor = 'rgba(15, 23, 42, 0.98)'
       })
       el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)'
+        pin.style.transform = 'scale(1)'
+        pin.style.boxShadow = '0 3px 12px rgba(0,0,0,0.25)'
+        tag.style.transform = 'translateX(-50%) scale(1)'
+        tag.style.backgroundColor = 'rgba(15, 23, 42, 0.88)'
       })
 
       // Popup
