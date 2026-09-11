@@ -18,6 +18,11 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Edit3,
+  Crosshair,
+  Undo2,
+  X,
+  MapPin,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import type { FeatureCollection, Feature } from 'geojson'
@@ -31,6 +36,8 @@ import {
   LPU_CENTER_COORDS,
   fetchPlaces,
   savePlace,
+  updatePlace,
+  getOriginalPlace,
   fetchRoads,
   saveRoad,
   uploadImageFile,
@@ -104,7 +111,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
   const [routeError, setRouteError] = useState<string | null>(null)
 
   // Contribute state
-  const [contributeMode, setContributeMode] = useState<'place' | 'road'>('place')
+  const [contributeMode, setContributeMode] = useState<'place' | 'road' | 'update'>('place')
   const [newPlaceName, setNewPlaceName] = useState('')
   const [newPlaceCategory, setNewPlaceCategory] = useState('academic')
   const [newPlaceDesc, setNewPlaceDesc] = useState('')
@@ -114,6 +121,19 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
   const [placeSubmitting, setPlaceSubmitting] = useState(false)
   const [placeSuccessMsg, setPlaceSuccessMsg] = useState<string | null>(null)
 
+  // Edit / Update Place state
+  const [editingPlace, setEditingPlace] = useState<Place | null>(null)
+  const [editPlaceName, setEditPlaceName] = useState('')
+  const [editPlaceCategory, setEditPlaceCategory] = useState('academic')
+  const [editPlaceDesc, setEditPlaceDesc] = useState('')
+  const [editPlaceLat, setEditPlaceLat] = useState('')
+  const [editPlaceLng, setEditPlaceLng] = useState('')
+  const [isPickingLocation, setIsPickingLocation] = useState(false)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null)
+  const [editErrorMsg, setEditErrorMsg] = useState<string | null>(null)
+  const editMarkerPreviewRef = useRef<mapboxgl.Marker | null>(null)
+
   // Road Drawing state
   const [newRoadName, setNewRoadName] = useState('')
   const [newRoadCategory, setNewRoadCategory] = useState('walkway')
@@ -122,6 +142,20 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
   const [roadSubmitting, setRoadSubmitting] = useState(false)
   const [roadSuccessMsg, setRoadSuccessMsg] = useState<string | null>(null)
   const roadMarkersRef = useRef<mapboxgl.Marker[]>([])
+
+  // Mutable ref to always have latest tab/edit state in map callbacks
+  const mapInteractionRef = useRef({
+    activeTab,
+    contributeMode,
+    isPickingLocation,
+    editingPlace,
+  })
+  mapInteractionRef.current = {
+    activeTab,
+    contributeMode,
+    isPickingLocation,
+    editingPlace,
+  }
 
   // Mobile drawer state
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(true)
@@ -183,7 +217,11 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     geolocate.on('geolocate', (e: any) => {
       const { longitude, latitude } = e.coords
       setCurrentGps([longitude, latitude])
-      if (contributeMode === 'place') {
+      const state = mapInteractionRef.current
+      if (state.isPickingLocation && state.editingPlace) {
+        setEditPlaceLng(longitude.toFixed(6))
+        setEditPlaceLat(latitude.toFixed(6))
+      } else if (state.activeTab === 'contribute' && state.contributeMode === 'place') {
         setNewPlaceLng(longitude.toFixed(6))
         setNewPlaceLat(latitude.toFixed(6))
       }
@@ -197,15 +235,23 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
 
     map.on('click', (e) => {
       const { lng, lat } = e.lngLat
+      const state = mapInteractionRef.current
+
+      // If in Reposition / Edit mode
+      if (state.isPickingLocation && state.editingPlace) {
+        setEditPlaceLng(lng.toFixed(6))
+        setEditPlaceLat(lat.toFixed(6))
+        return
+      }
 
       // If in Contribute Place mode
-      if (activeTab === 'contribute' && contributeMode === 'place') {
+      if (state.activeTab === 'contribute' && state.contributeMode === 'place') {
         setNewPlaceLng(lng.toFixed(6))
         setNewPlaceLat(lat.toFixed(6))
       }
 
       // If in Contribute Road mode
-      if (activeTab === 'contribute' && contributeMode === 'road') {
+      if (state.activeTab === 'contribute' && state.contributeMode === 'road') {
         setDrawnPoints((prev) => [...prev, [lng, lat]])
       }
     })
@@ -379,7 +425,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
 
       // Popup
       const popupHtml = `
-        <div style="font-family: Inter, sans-serif; padding: 4px; max-width: 220px;">
+        <div style="font-family: Inter, sans-serif; padding: 4px; max-width: 230px;">
           ${
             place.image_url
               ? `<img src="${place.image_url}" style="width: 100%; height: 95px; object-fit: cover; border-radius: 8px; margin-bottom: 6px;" />`
@@ -387,21 +433,33 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           }
           <div style="font-weight: 700; font-size: 13px; color: #0f172a; margin-bottom: 2px;">${place.name}</div>
           <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-bottom: 8px;">${place.description}</div>
-          <button id="pin-route-btn-${place.id}" style="width: 100%; background: #ea580c; color: #fff; font-weight: 600; font-size: 11px; padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer;">
-            🧭 Get Directions Here
-          </button>
+          <div style="display: flex; gap: 6px;">
+            <button id="pin-edit-btn-${place.id}" style="flex: 1; background: #f1f5f9; color: #334155; font-weight: 600; font-size: 11px; padding: 6px 6px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+              ✏️ Fix Location
+            </button>
+            <button id="pin-route-btn-${place.id}" style="flex: 1; background: #ea580c; color: #fff; font-weight: 600; font-size: 11px; padding: 6px 6px; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+              🧭 Directions
+            </button>
+          </div>
         </div>
       `
 
       const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(popupHtml)
 
       popup.on('open', () => {
-        const btn = document.getElementById(`pin-route-btn-${place.id}`)
-        if (btn) {
-          btn.addEventListener('click', () => {
+        const routeBtn = document.getElementById(`pin-route-btn-${place.id}`)
+        if (routeBtn) {
+          routeBtn.addEventListener('click', () => {
             setDestinationId(place.id)
             setActiveTab('directions')
             setMobileDrawerOpen(true)
+            popup.remove()
+          })
+        }
+        const editBtn = document.getElementById(`pin-edit-btn-${place.id}`)
+        if (editBtn) {
+          editBtn.addEventListener('click', () => {
+            handleStartEditPlace(place)
             popup.remove()
           })
         }
@@ -479,6 +537,48 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
       })
     }
   }, [drawnPoints, mapLoaded])
+
+  // Preview / draggable marker for updating place location
+  useEffect(() => {
+    if (!mapRef.current || !editingPlace) {
+      if (editMarkerPreviewRef.current) {
+        editMarkerPreviewRef.current.remove()
+        editMarkerPreviewRef.current = null
+      }
+      return
+    }
+
+    const lat = parseFloat(editPlaceLat)
+    const lng = parseFloat(editPlaceLng)
+    if (isNaN(lat) || isNaN(lng)) return
+
+    if (!editMarkerPreviewRef.current) {
+      const el = document.createElement('div')
+      el.className = 'edit-preview-marker'
+      el.style.cursor = 'grab'
+      el.innerHTML = `
+        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(234, 88, 12, 0.3); animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: #ea580c; border: 3px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-size: 16px; color: #fff;">
+            🎯
+          </div>
+        </div>
+      `
+      const m = new mapboxgl.Marker({ element: el, draggable: true })
+        .setLngLat([lng, lat])
+        .addTo(mapRef.current)
+
+      m.on('dragend', () => {
+        const coords = m.getLngLat()
+        setEditPlaceLng(coords.lng.toFixed(6))
+        setEditPlaceLat(coords.lat.toFixed(6))
+      })
+
+      editMarkerPreviewRef.current = m
+    } else {
+      editMarkerPreviewRef.current.setLngLat([lng, lat])
+    }
+  }, [editingPlace, editPlaceLat, editPlaceLng])
 
   // Satellite Style Toggle
   const toggleMapStyle = () => {
@@ -718,6 +818,100 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     }
   }
 
+  // Start editing a place
+  const handleStartEditPlace = (place: Place) => {
+    setEditingPlace(place)
+    setEditPlaceName(place.name)
+    setEditPlaceCategory(place.category)
+    setEditPlaceDesc(place.description)
+    setEditPlaceLat(place.latitude.toFixed(6))
+    setEditPlaceLng(place.longitude.toFixed(6))
+    setIsPickingLocation(true)
+    setEditSuccessMsg(null)
+    setEditErrorMsg(null)
+
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center: [place.longitude, place.latitude],
+        zoom: 17.5,
+        duration: 1100,
+      })
+    }
+  }
+
+  // Close place editing modal/mode
+  const handleCloseEditPlace = () => {
+    setEditingPlace(null)
+    setIsPickingLocation(false)
+    setEditSuccessMsg(null)
+    setEditErrorMsg(null)
+    if (editMarkerPreviewRef.current) {
+      editMarkerPreviewRef.current.remove()
+      editMarkerPreviewRef.current = null
+    }
+  }
+
+  // Reset coordinates to bundled default
+  const handleResetToOriginalCoords = () => {
+    if (!editingPlace) return
+    const orig = getOriginalPlace(editingPlace.id)
+    if (orig) {
+      setEditPlaceLat(orig.latitude.toFixed(6))
+      setEditPlaceLng(orig.longitude.toFixed(6))
+      if (mapRef.current) {
+        mapRef.current.flyTo({
+          center: [orig.longitude, orig.latitude],
+          zoom: 17.5,
+          duration: 900,
+        })
+      }
+    }
+  }
+
+  // Save edited place
+  const handleSaveEditedPlace = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!editingPlace) return
+    setEditErrorMsg(null)
+    setEditSuccessMsg(null)
+
+    const lat = parseFloat(editPlaceLat)
+    const lng = parseFloat(editPlaceLng)
+    if (isNaN(lat) || isNaN(lng)) {
+      setEditErrorMsg('Please provide valid numerical Latitude and Longitude values.')
+      return
+    }
+
+    setEditSubmitting(true)
+    try {
+      const updated: Place = {
+        ...editingPlace,
+        name: editPlaceName.trim() || editingPlace.name,
+        category: editPlaceCategory,
+        description: editPlaceDesc.trim(),
+        latitude: lat,
+        longitude: lng,
+      }
+
+      await updatePlace(updated)
+
+      // Update state
+      setPlaces((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p))
+      )
+
+      setEditSuccessMsg(`"${updated.name}" updated successfully!`)
+
+      setTimeout(() => {
+        handleCloseEditPlace()
+      }, 1200)
+    } catch (err: any) {
+      setEditErrorMsg(err.message || 'Failed to update place location.')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
   // Smooth exit transition matching LiveHRAgentPage handleGoHome
   const handleGoHome = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -907,14 +1101,24 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       </div>
 
                       <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[11px]">
-                        <span className="text-slate-400 font-medium">📍 LPU Campus</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleStartEditPlace(place)
+                          }}
+                          className="flex items-center gap-1 font-semibold text-slate-500 hover:text-orange-600 transition cursor-pointer"
+                          title="Correct inaccurate coordinates or details"
+                        >
+                          <Edit3 className="h-3 w-3 text-slate-400 group-hover:text-orange-500" />
+                          <span>Fix Location</span>
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             setDestinationId(place.id)
                             setActiveTab('directions')
                           }}
-                          className="flex items-center gap-1 font-bold text-orange-600 hover:text-orange-700 transition"
+                          className="flex items-center gap-1 font-bold text-orange-600 hover:text-orange-700 transition cursor-pointer"
                         >
                           <span>Directions</span>
                           <NavIcon className="h-3 w-3" />
@@ -1119,29 +1323,40 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           {/* TAB 3: CONTRIBUTE PANEL */}
           {activeTab === 'contribute' && (
             <div className="flex flex-1 flex-col overflow-y-auto p-3 sm:p-4">
-              {/* Sub-tab Switcher: Add Place vs Add Road */}
-              <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100 p-1 mb-3">
+              {/* Sub-tab Switcher: Add Place vs Fix Location vs Draw Road */}
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1 mb-3">
                 <button
                   type="button"
                   onClick={() => setContributeMode('place')}
-                  className={`rounded-lg py-1.5 text-xs font-bold transition cursor-pointer ${
+                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
                     contributeMode === 'place'
                       ? 'bg-white text-orange-600 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  📍 Add Campus Place
+                  📍 Add Place
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContributeMode('update')}
+                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
+                    contributeMode === 'update'
+                      ? 'bg-white text-orange-600 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ✏️ Fix Location
                 </button>
                 <button
                   type="button"
                   onClick={() => setContributeMode('road')}
-                  className={`rounded-lg py-1.5 text-xs font-bold transition cursor-pointer ${
+                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
                     contributeMode === 'road'
                       ? 'bg-white text-orange-600 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🛣️ Draw Pathway / Road
+                  🛣️ Draw Road
                 </button>
               </div>
 
@@ -1275,7 +1490,194 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                 </form>
               )}
 
-              {/* Subpanel 2: Draw Road */}
+              {/* Subpanel 2: Fix / Update Existing Location */}
+              {contributeMode === 'update' && (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+                    🎯 <b>Fix inaccurate landmarks:</b> Select any campus location below to adjust its coordinates, name, or description.
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Choose Location to Fix
+                    </label>
+                    <select
+                      value={editingPlace?.id || ''}
+                      onChange={(e) => {
+                        const p = places.find((item) => item.id === e.target.value)
+                        if (p) handleStartEditPlace(p)
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                    >
+                      <option value="" disabled>-- Select a campus landmark --</option>
+                      {places.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.category.replace('_', ' ')})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {editingPlace ? (
+                    <form onSubmit={handleSaveEditedPlace} className="space-y-3 pt-2 border-t border-slate-100">
+                      {editSuccessMsg && (
+                        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>{editSuccessMsg}</span>
+                        </div>
+                      )}
+
+                      {editErrorMsg && (
+                        <div className="flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-800">
+                          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                          <span>{editErrorMsg}</span>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Landmark Name
+                        </label>
+                        <input
+                          type="text"
+                          value={editPlaceName}
+                          onChange={(e) => setEditPlaceName(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Category
+                        </label>
+                        <select
+                          value={editPlaceCategory}
+                          onChange={(e) => setEditPlaceCategory(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                        >
+                          <option value="academic">Academic Block / Lab</option>
+                          <option value="library">Library / Study Zone</option>
+                          <option value="student_spot">Student Spot / Plaza / Cafe</option>
+                          <option value="hostel">Hostel Residence</option>
+                          <option value="sports">Sports Arena</option>
+                          <option value="hospital">Medical / Healthcare</option>
+                          <option value="gate">Campus Gate / Entrance</option>
+                        </select>
+                      </div>
+
+                      {/* Map picker tools */}
+                      <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-orange-900 flex items-center gap-1">
+                            <Crosshair className="h-3 w-3 text-orange-600" />
+                            Target Coordinates
+                          </span>
+                          <span className="text-[9px] text-orange-700">Click map or drag 🎯 pin</span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setIsPickingLocation(!isPickingLocation)}
+                            className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${
+                              isPickingLocation
+                                ? 'bg-orange-600 text-white shadow-xs'
+                                : 'bg-white border border-orange-300 text-orange-700 hover:bg-orange-100'
+                            }`}
+                          >
+                            {isPickingLocation ? '🎯 Map Click Active' : 'Click Map to Pick'}
+                          </button>
+
+                          {currentGps && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditPlaceLng(currentGps[0].toFixed(6))
+                                setEditPlaceLat(currentGps[1].toFixed(6))
+                              }}
+                              className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                            >
+                              📍 My GPS
+                            </button>
+                          )}
+
+                          {getOriginalPlace(editingPlace.id) && (
+                            <button
+                              type="button"
+                              onClick={handleResetToOriginalCoords}
+                              className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                              title="Restore factory default coordinates"
+                            >
+                              ↺ Reset Default
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">Latitude</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={editPlaceLat}
+                              onChange={(e) => setEditPlaceLat(e.target.value)}
+                              className="w-full rounded-lg border border-slate-300 bg-white py-1 px-2 text-xs font-mono text-slate-800"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">Longitude</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={editPlaceLng}
+                              onChange={(e) => setEditPlaceLng(e.target.value)}
+                              className="w-full rounded-lg border border-slate-300 bg-white py-1 px-2 text-xs font-mono text-slate-800"
+                              required
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Description
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={editPlaceDesc}
+                          onChange={(e) => setEditPlaceDesc(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCloseEditPlace}
+                          className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={editSubmitting}
+                          className="flex-1 rounded-xl bg-orange-600 py-2 text-xs font-bold text-white shadow-sm hover:bg-orange-700 transition cursor-pointer disabled:opacity-50"
+                        >
+                          {editSubmitting ? 'Saving...' : 'Update Location'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+                      Please choose a location above or click <b>"✏️ Fix Location"</b> on any map pin or Explore card to begin editing.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Subpanel 3: Draw Road */}
               {contributeMode === 'road' && (
                 <form onSubmit={handleSubmitRoad} className="space-y-3">
                   {roadSuccessMsg && (
@@ -1386,6 +1788,21 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
             </button>
           </div>
 
+          {/* Active Picking / Repositioning Floating Banner */}
+          {isPickingLocation && editingPlace && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-slate-900/90 px-4 py-2 text-xs font-semibold text-white shadow-xl backdrop-blur-md border border-orange-500/50 animate-pulse">
+              <Crosshair className="h-4 w-4 text-orange-400" />
+              <span>Click map or drag 🎯 pin to reposition <strong>{editingPlace.name}</strong></span>
+              <button
+                type="button"
+                onClick={() => setIsPickingLocation(false)}
+                className="ml-1.5 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:text-white cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
           {/* Interactive 3D Mascot Character in the Corner (Requirement 3) */}
           <CharacterOverlay
             onQuickNavigate={(destId) => {
@@ -1396,6 +1813,202 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           />
         </div>
       </div>
+
+      {/* Edit Location Modal (when opened from Map Pin popup or Explore card) */}
+      {editingPlace && activeTab !== 'contribute' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-fadeIn">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-orange-100 text-orange-600 text-sm font-bold">
+                    ✏️
+                  </span>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Fix Campus Landmark Location
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Adjust coordinates or details for <strong>{editingPlace.name}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseEditPlace}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {editSuccessMsg && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>{editSuccessMsg}</span>
+              </div>
+            )}
+
+            {editErrorMsg && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>{editErrorMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditedPlace} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Landmark Name
+                </label>
+                <input
+                  type="text"
+                  value={editPlaceName}
+                  onChange={(e) => setEditPlaceName(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Category
+                </label>
+                <select
+                  value={editPlaceCategory}
+                  onChange={(e) => setEditPlaceCategory(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                >
+                  <option value="academic">Academic Block / Lab</option>
+                  <option value="library">Library & Study</option>
+                  <option value="student_spot">Student Spot / Cafes</option>
+                  <option value="hostel">Hostel & Housing</option>
+                  <option value="gate">Campus Gate / Entrance</option>
+                  <option value="sports">Sports Complex</option>
+                  <option value="hospital">Health & Hospital</option>
+                </select>
+              </div>
+
+              <div className="rounded-xl border border-orange-200/80 bg-orange-50/50 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-orange-900 flex items-center gap-1.5">
+                    <Crosshair className="h-3.5 w-3.5 text-orange-600" />
+                    Target Coordinates
+                  </span>
+                  <span className="text-[10px] text-orange-700 font-medium">
+                    Click map or drag 🎯 pin
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPickingLocation(!isPickingLocation)}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                      isPickingLocation
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-white border border-orange-300 text-orange-700 hover:bg-orange-100'
+                    }`}
+                  >
+                    <Crosshair className="h-3.5 w-3.5" />
+                    <span>{isPickingLocation ? '🎯 Click Map Mode Active' : 'Click Map to Pick'}</span>
+                  </button>
+
+                  {currentGps && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditPlaceLng(currentGps[0].toFixed(6))
+                        setEditPlaceLat(currentGps[1].toFixed(6))
+                      }}
+                      className="flex items-center gap-1 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      <MapPin className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Use My GPS</span>
+                    </button>
+                  )}
+
+                  {getOriginalPlace(editingPlace.id) && (
+                    <button
+                      type="button"
+                      onClick={handleResetToOriginalCoords}
+                      className="flex items-center gap-1 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                      title="Reset coordinates back to bundled defaults"
+                    >
+                      <Undo2 className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Reset Default</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                      Latitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editPlaceLat}
+                      onChange={(e) => setEditPlaceLat(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono text-slate-800 focus:border-orange-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                      Longitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editPlaceLng}
+                      onChange={(e) => setEditPlaceLng(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-mono text-slate-800 focus:border-orange-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={editPlaceDesc}
+                  onChange={(e) => setEditPlaceDesc(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={handleCloseEditPlace}
+                  className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="flex items-center gap-1.5 rounded-xl bg-orange-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-orange-700 transition cursor-pointer disabled:opacity-50"
+                >
+                  {editSubmitting ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save & Update Location</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Student Authentication Modal (Requirement 1) */}
       <AuthModal

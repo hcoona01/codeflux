@@ -120,9 +120,55 @@ function updateLocalPlacesCache(place: Place) {
       // ignore
     }
   }
-  const filtered = list.filter((p) => p.id !== place.id)
-  filtered.unshift(place)
-  localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(filtered))
+  const index = list.findIndex((p) => p.id === place.id)
+  if (index >= 0) {
+    list[index] = { ...list[index], ...place }
+  } else {
+    list.unshift(place)
+  }
+  localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(list))
+}
+
+export async function updatePlace(
+  place: Place,
+): Promise<Place> {
+  const token = await getCurrentUserToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  try {
+    const res = await fetch(`/api/places/${place.id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(place),
+      signal: AbortSignal.timeout(4000),
+    })
+    if (res.ok) {
+      const saved = await res.json()
+      updateLocalPlacesCache(saved)
+      return saved
+    }
+  } catch (err) {
+    console.log('[Info] Updated place in local campus storage fallback.', err)
+  }
+
+  updateLocalPlacesCache(place)
+  return place
+}
+
+export function getOriginalPlace(placeId: string): Place | undefined {
+  return (campusPlacesData as Place[]).find((p) => p.id === placeId)
+}
+
+export function resetPlaceToDefault(placeId: string): Place | null {
+  const original = getOriginalPlace(placeId)
+  if (!original) return null
+  updateLocalPlacesCache(original)
+  return original
 }
 
 export async function fetchRoads(): Promise<Road[]> {
