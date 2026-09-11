@@ -25,7 +25,7 @@ const SLIDES = [
     src: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/2.b977faab.png',
     bg: '#6BBF7A',
     panel: '#85CC92',
-    tab: 'Events',
+    tab: 'Campus Events',
     ghost: 'EVENTS',
     title: 'CAMPUS EVENTS',
     copy: 'Clubs, fests, workshops, and talks that actually match your course and interests — not a buried notice-board dump.',
@@ -74,13 +74,13 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
   if (role === 'center') {
     return {
       ...shared,
-      transform: `translateX(-50%) scale(${isMobile ? 1.25 : 1.68})`,
+      transform: `translateX(-50%) scale(${isMobile ? 1.2 : 1.68})`,
       filter: 'blur(0px)',
       opacity: 1,
       zIndex: 20,
       left: '50%',
-      height: isMobile ? '60%' : '92%',
-      bottom: isMobile ? '22%' : 0,
+      height: isMobile ? '64%' : '92%',
+      bottom: isMobile ? '12%' : 0,
     }
   }
 
@@ -89,11 +89,11 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
       ...shared,
       transform: 'translateX(-50%) scale(1)',
       filter: 'blur(2px)',
-      opacity: 0.85,
+      opacity: isMobile ? 0.6 : 0.85,
       zIndex: 10,
-      left: isMobile ? '20%' : '30%',
-      height: isMobile ? '16%' : '28%',
-      bottom: isMobile ? '32%' : '12%',
+      left: isMobile ? '14%' : '30%',
+      height: isMobile ? '18%' : '28%',
+      bottom: isMobile ? '22%' : '12%',
     }
   }
 
@@ -102,11 +102,11 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
       ...shared,
       transform: 'translateX(-50%) scale(1)',
       filter: 'blur(2px)',
-      opacity: 0.85,
+      opacity: isMobile ? 0.6 : 0.85,
       zIndex: 10,
-      left: isMobile ? '80%' : '70%',
-      height: isMobile ? '16%' : '28%',
-      bottom: isMobile ? '32%' : '12%',
+      left: isMobile ? '86%' : '70%',
+      height: isMobile ? '18%' : '28%',
+      bottom: isMobile ? '22%' : '12%',
     }
   }
 
@@ -117,8 +117,8 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
     opacity: 1,
     zIndex: 5,
     left: '50%',
-    height: isMobile ? '13%' : '22%',
-    bottom: isMobile ? '32%' : '12%',
+    height: isMobile ? '14%' : '22%',
+    bottom: isMobile ? '22%' : '12%',
   }
 }
 
@@ -128,6 +128,8 @@ export default function CampusHero() {
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < 640,
   )
+  const [touchStartX, setTouchStartX] = useState<number | null>(null)
+  const [touchStartY, setTouchStartY] = useState<number | null>(null)
 
   useEffect(() => {
     SLIDES.forEach((slide) => {
@@ -161,18 +163,43 @@ export default function CampusHero() {
     [activeIndex, goTo, isAnimating],
   )
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX)
+    setTouchStartY(e.touches[0].clientY)
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null || touchStartY === null) return
+    const deltaX = touchStartX - e.changedTouches[0].clientX
+    const deltaY = touchStartY - e.changedTouches[0].clientY
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
+      if (deltaX > 0) {
+        navigate('next')
+      } else {
+        navigate('prev')
+      }
+    }
+    setTouchStartX(null)
+    setTouchStartY(null)
+  }
+
   const active = SLIDES[activeIndex]
 
   return (
     <div
-      className="relative w-full overflow-hidden"
+      className="relative w-full overflow-hidden select-none"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       style={{
         backgroundColor: active.bg,
         transition: `background-color ${DURATION_MS}ms ${EASE}`,
         fontFamily: 'Inter, sans-serif',
       }}
     >
-      <div className="relative w-full" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div
+        className="relative w-full overflow-hidden"
+        style={{ height: '100dvh', minHeight: '520px' }}
+      >
         <div
           className="grain-overlay pointer-events-none absolute inset-0"
           style={{
@@ -184,68 +211,138 @@ export default function CampusHero() {
           }}
         />
 
-        <div
-          className="pointer-events-none absolute inset-x-0 flex select-none items-center justify-center"
-          style={{ zIndex: 2, top: '18%' }}
-        >
-          {SLIDES.map((slide, i) => (
-            <span
-              key={slide.ghost}
-              className="absolute uppercase"
-              style={{
-                fontFamily: 'Anton, sans-serif',
-                fontSize: 'clamp(90px, 28vw, 380px)',
-                fontWeight: 900,
-                color: '#fff',
-                opacity: i === activeIndex ? 1 : 0,
-                lineHeight: 1,
-                letterSpacing: '-0.02em',
-                whiteSpace: 'nowrap',
-                transition: `opacity ${DURATION_MS}ms ${EASE}`,
-              }}
+        {/* Top Header & Navigation Tabs */}
+        <div className="absolute top-3 inset-x-3 z-[60] flex flex-col sm:top-6 sm:left-8 sm:inset-x-auto sm:w-auto">
+          {/* Top Bar on Mobile: Brand on Left, LPU Logo on Right */}
+          <div className="flex items-center justify-between w-full sm:block">
+            <p
+              className="text-xs font-bold uppercase tracking-[0.18em] text-white/95 sm:text-xs"
             >
-              {slide.ghost}
-            </span>
-          ))}
-        </div>
+              Verto Omniroute
+            </p>
 
-        <div
-          className="absolute top-6 left-4 z-[60] sm:left-8"
-          style={{ zIndex: 60 }}
-        >
-          <p
-            className="text-xs font-semibold uppercase"
-            style={{ color: '#fff', opacity: 0.9, letterSpacing: '0.18em' }}
-          >
-            CODEFLUX
-          </p>
+            {/* Mobile LPU Logo */}
+            <div className="flex sm:hidden h-10 w-10 items-center justify-center rounded-full bg-white p-0.5 shadow-md ring-2 ring-white/60">
+              <img
+                src="/lpu-logo.png"
+                alt="Lovely Professional University"
+                className="h-full w-full rounded-full object-contain"
+                draggable={false}
+              />
+            </div>
+          </div>
+
+          {/* Navigation Tabs: 2x2 grid on mobile so all 4 tabs are fully visible, uniform vertical stack on desktop */}
           <nav
-            className="mt-3 grid w-max grid-cols-2 gap-1.5 sm:mt-4 sm:gap-2"
+            className="mt-2 grid grid-cols-2 gap-1.5 w-full max-w-[340px] sm:mt-4 sm:flex sm:flex-col sm:w-40 sm:gap-2.5 sm:max-w-none"
             aria-label="Campus demos"
           >
-          {SLIDES.map((slide, i) => {
-            const selected = i === activeIndex
-            return (
-              <button
-                key={slide.tab}
-                type="button"
-                onClick={() => goTo(i)}
-                className="rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide uppercase sm:px-3 sm:py-1.5 sm:text-xs"
-                style={{
-                  color: '#fff',
-                  border: '1.5px solid rgba(255,255,255,0.85)',
-                  backgroundColor: selected ? 'rgba(255,255,255,0.22)' : 'transparent',
-                  transition: 'background-color 150ms, transform 150ms',
-                }}
-              >
-                {slide.tab}
-              </button>
-            )
-          })}
+            {SLIDES.map((slide, i) => {
+              const selected = i === activeIndex
+              return (
+                <button
+                  key={slide.tab}
+                  type="button"
+                  onClick={() => goTo(i)}
+                  className="flex w-full items-center justify-center rounded-full px-2 py-1.5 text-center text-[10px] font-semibold tracking-wider uppercase sm:px-4 sm:py-2 sm:text-xs cursor-pointer transition-all duration-200"
+                  style={{
+                    color: '#fff',
+                    border: '1.5px solid rgba(255,255,255,0.85)',
+                    backgroundColor: selected ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.08)',
+                    boxShadow: selected ? '0 2px 10px rgba(0,0,0,0.12)' : 'none',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!selected) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.18)'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!selected) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
+                  }}
+                >
+                  {slide.tab}
+                </button>
+              )
+            })}
           </nav>
         </div>
 
-        <div className="absolute inset-0" style={{ zIndex: 3 }}>
+        {/* Desktop LPU Logo in top right circle */}
+        <div
+          className="hidden sm:flex absolute top-6 right-8 z-[60] items-center justify-center"
+          style={{ zIndex: 60 }}
+        >
+          <div className="flex h-16 w-16 md:h-18 md:w-18 items-center justify-center rounded-full bg-white p-1 shadow-lg ring-2 ring-white/60 transition-transform duration-300 hover:scale-105">
+            <img
+              src="/lpu-logo.png"
+              alt="Lovely Professional University"
+              className="h-full w-full rounded-full object-contain"
+              draggable={false}
+            />
+          </div>
+        </div>
+
+        {/* Top background text: Verto OmniRoute */}
+        <div
+          className="pointer-events-none absolute inset-x-0 flex select-none items-center justify-center px-3"
+          style={{
+            zIndex: 2,
+            top: isMobile ? '20%' : '12%',
+          }}
+        >
+          <span
+            className="uppercase text-center leading-none"
+            style={{
+              fontFamily: 'Anton, sans-serif',
+              fontSize: 'clamp(28px, 6.8vw, 130px)',
+              fontWeight: 900,
+              color: '#0e0d0dff',
+              opacity: 0.95,
+              lineHeight: 1,
+              letterSpacing: '0.02em',
+              whiteSpace: 'nowrap',
+              textShadow: '0 4px 28px rgba(0, 0, 0, 0.08)',
+            }}
+          >
+            Verto OmniRoute
+          </span>
+        </div>
+
+        {/* Current background texts shifted to right side (red rectangle area) */}
+        <div
+          className="pointer-events-none absolute right-3 sm:right-8 md:right-14 select-none"
+          style={{
+            zIndex: 25,
+            top: isMobile ? '38%' : '44%',
+            transform: 'translateY(-50%)',
+          }}
+        >
+          <div className="relative flex min-h-[40px] sm:min-h-[90px] items-center justify-end">
+            {SLIDES.map((slide, i) => (
+              <span
+                key={slide.ghost}
+                className="absolute right-0 uppercase"
+                style={{
+                  fontFamily: 'Anton, sans-serif',
+                  fontSize: 'clamp(28px, 5.5vw, 76px)',
+                  fontWeight: 900,
+                  color: '#ffffff',
+                  opacity: i === activeIndex ? (isMobile ? 0.4 : 1) : 0,
+                  transform: i === activeIndex ? 'translateX(0)' : 'translateX(20px)',
+                  lineHeight: 1,
+                  letterSpacing: '-0.01em',
+                  whiteSpace: 'nowrap',
+                  textShadow: '0 4px 24px rgba(0, 0, 0, 0.15)',
+                  transition: `opacity ${DURATION_MS}ms ${EASE}, transform ${DURATION_MS}ms ${EASE}`,
+                }}
+              >
+                {slide.ghost}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* 3D Character Stage */}
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 3 }}>
           {SLIDES.map((slide, i) => (
             <div key={slide.src} style={itemStyle(roleFor(i, activeIndex), isMobile)}>
               <img
@@ -263,28 +360,27 @@ export default function CampusHero() {
           ))}
         </div>
 
+        {/* Bottom Left: Title, description & navigation arrows */}
         <div
-          className="absolute bottom-6 left-4 sm:bottom-20 sm:left-24"
-          style={{ zIndex: 60, maxWidth: 320 }}
+          className="absolute bottom-4 left-4 z-[60] sm:bottom-16 sm:left-16"
+          style={{ maxWidth: isMobile ? '230px' : '340px' }}
         >
           <p
-            className="mb-2 text-base font-bold uppercase sm:mb-3 sm:text-[22px]"
-            style={{ color: '#fff', opacity: 0.95, letterSpacing: '0.02em' }}
+            className="mb-1 text-sm font-bold uppercase tracking-wider text-white sm:mb-3 sm:text-[22px]"
           >
             {active.title}
           </p>
           <p
-            className="mb-4 hidden text-xs sm:mb-5 sm:block sm:text-sm"
-            style={{ color: '#fff', opacity: 0.85, lineHeight: 1.6 }}
+            className="mb-3 hidden text-xs text-white/85 sm:mb-5 sm:block sm:text-sm sm:leading-relaxed"
           >
             {active.copy}
           </p>
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3">
             <button
               type="button"
               aria-label="Previous"
               onClick={() => navigate('prev')}
-              className="flex h-12 w-12 items-center justify-center rounded-full sm:h-16 sm:w-16"
+              className="flex h-10 w-10 items-center justify-center rounded-full sm:h-14 sm:w-14 cursor-pointer"
               style={{
                 backgroundColor: 'transparent',
                 border: '2px solid #fff',
@@ -300,13 +396,13 @@ export default function CampusHero() {
                 e.currentTarget.style.backgroundColor = 'transparent'
               }}
             >
-              <ArrowLeft size={26} strokeWidth={2.25} />
+              <ArrowLeft className="h-4 w-4 sm:h-6 sm:w-6" strokeWidth={2.25} />
             </button>
             <button
               type="button"
               aria-label="Next"
               onClick={() => navigate('next')}
-              className="flex h-12 w-12 items-center justify-center rounded-full sm:h-16 sm:w-16"
+              className="flex h-10 w-10 items-center justify-center rounded-full sm:h-14 sm:w-14 cursor-pointer"
               style={{
                 backgroundColor: 'transparent',
                 border: '2px solid #fff',
@@ -322,18 +418,18 @@ export default function CampusHero() {
                 e.currentTarget.style.backgroundColor = 'transparent'
               }}
             >
-              <ArrowRight size={26} strokeWidth={2.25} />
+              <ArrowRight className="h-4 w-4 sm:h-6 sm:w-6" strokeWidth={2.25} />
             </button>
           </div>
         </div>
 
+        {/* Bottom Right: CTA link */}
         <a
           href={active.href}
-          className="absolute right-4 bottom-6 flex items-center no-underline sm:right-10 sm:bottom-20"
+          className="absolute right-4 bottom-5 sm:right-10 sm:bottom-16 z-[60] flex items-center no-underline"
           style={{
-            zIndex: 60,
             fontFamily: 'Anton, sans-serif',
-            fontSize: 'clamp(20px, 4vw, 56px)',
+            fontSize: 'clamp(18px, 3.8vw, 54px)',
             fontWeight: 400,
             color: '#fff',
             opacity: 0.95,
@@ -350,7 +446,7 @@ export default function CampusHero() {
           }}
         >
           {active.cta}
-          <ArrowRight className="ml-2 h-5 w-5 sm:h-8 sm:w-8" strokeWidth={2.25} />
+          <ArrowRight className="ml-1.5 h-4 w-4 sm:ml-2 sm:h-7 sm:w-7" strokeWidth={2.25} />
         </a>
       </div>
     </div>
