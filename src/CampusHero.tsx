@@ -1,8 +1,10 @@
 import { ArrowLeft, ArrowRight } from 'lucide-react'
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 
 const EASE = 'cubic-bezier(0.4, 0, 0.2, 1)'
 const DURATION_MS = 650
+const AUTO_SWITCH_INTERVAL_MS = 3000
+const USER_PAUSE_DURATION_MS = 20000
 
 const GRAIN =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E\")"
@@ -131,6 +133,42 @@ export default function CampusHero() {
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchStartY, setTouchStartY] = useState<number | null>(null)
 
+  const autoTimerRef = useRef<number | null>(null)
+  const userPauseTimerRef = useRef<number | null>(null)
+
+  const startAutoSwitch = useCallback(() => {
+    if (autoTimerRef.current) window.clearInterval(autoTimerRef.current)
+    autoTimerRef.current = window.setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % SLIDES.length
+        setIsAnimating(true)
+        window.setTimeout(() => setIsAnimating(false), DURATION_MS)
+        return next
+      })
+    }, AUTO_SWITCH_INTERVAL_MS)
+  }, [])
+
+  const handleUserActivity = useCallback(() => {
+    if (autoTimerRef.current) {
+      window.clearInterval(autoTimerRef.current)
+      autoTimerRef.current = null
+    }
+    if (userPauseTimerRef.current) {
+      window.clearTimeout(userPauseTimerRef.current)
+    }
+    userPauseTimerRef.current = window.setTimeout(() => {
+      startAutoSwitch()
+    }, USER_PAUSE_DURATION_MS)
+  }, [startAutoSwitch])
+
+  useEffect(() => {
+    startAutoSwitch()
+    return () => {
+      if (autoTimerRef.current) window.clearInterval(autoTimerRef.current)
+      if (userPauseTimerRef.current) window.clearTimeout(userPauseTimerRef.current)
+    }
+  }, [startAutoSwitch])
+
   useEffect(() => {
     SLIDES.forEach((slide) => {
       const img = new Image()
@@ -146,19 +184,22 @@ export default function CampusHero() {
   }, [])
 
   const goTo = useCallback(
-    (nextIndex: number) => {
+    (nextIndex: number, isUser = true) => {
+      if (isUser) {
+        handleUserActivity()
+      }
       if (isAnimating || nextIndex === activeIndex) return
       setIsAnimating(true)
       setActiveIndex(nextIndex)
       window.setTimeout(() => setIsAnimating(false), DURATION_MS)
     },
-    [activeIndex, isAnimating],
+    [activeIndex, isAnimating, handleUserActivity],
   )
 
   const navigate = useCallback(
     (dir: 'next' | 'prev') => {
       if (isAnimating) return
-      goTo(dir === 'next' ? (activeIndex + 1) % 4 : (activeIndex + 3) % 4)
+      goTo(dir === 'next' ? (activeIndex + 1) % 4 : (activeIndex + 3) % 4, true)
     },
     [activeIndex, goTo, isAnimating],
   )
@@ -173,6 +214,7 @@ export default function CampusHero() {
     const deltaX = touchStartX - e.changedTouches[0].clientX
     const deltaY = touchStartY - e.changedTouches[0].clientY
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
+      handleUserActivity()
       if (deltaX > 0) {
         navigate('next')
       } else {
@@ -188,6 +230,7 @@ export default function CampusHero() {
   return (
     <div
       className="relative w-full overflow-hidden select-none"
+      onClick={handleUserActivity}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       style={{
@@ -362,8 +405,8 @@ export default function CampusHero() {
 
         {/* Bottom Left: Title, description & navigation arrows */}
         <div
-          className="absolute bottom-4 left-4 z-[60] sm:bottom-16 sm:left-16"
-          style={{ maxWidth: isMobile ? '230px' : '340px' }}
+          className="absolute bottom-4 left-3 z-[60] sm:bottom-12 sm:left-8 md:left-10"
+          style={{ maxWidth: isMobile ? '210px' : '280px' }}
         >
           <p
             className="mb-1 text-sm font-bold uppercase tracking-wider text-white sm:mb-3 sm:text-[22px]"
