@@ -20,9 +20,6 @@ import {
   Loader2,
   Edit3,
   Crosshair,
-  Undo2,
-  X,
-  MapPin,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import type { FeatureCollection, Feature } from 'geojson'
