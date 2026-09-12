@@ -212,7 +212,18 @@ export async function fetchPlaces(): Promise<Place[]> {
     return cloudData
   }
 
-  // 2. Secondary: Cloud Firestore if live
+  // 2. Local storage cache (instant 0ms response)
+  const cached = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+      }
+    } catch {}
+  }
+
+  // 3. Secondary: Cloud Firestore if live
   if (db) {
     try {
       const snap = await Promise.race([
@@ -228,22 +239,10 @@ export async function fetchPlaces(): Promise<Place[]> {
         return firestorePlaces
       }
     } catch (err) {
-      console.warn('[OmniRoute] Firestore places fetch fallback:', err)
+      console.debug('[OmniRoute] Firestore places fetch fallback:', err)
     }
   }
 
-  // 3. Fallback: local storage cache
-  const cached = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
-      }
-    } catch {
-      // ignore
-    }
-  }
   return campusPlacesData as Place[]
 }
 
@@ -378,7 +377,7 @@ export async function savePlace(
       setDoc(doc(db, 'campus_places', newPlace.id), newPlace),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000)),
     ]).catch((err) => {
-      console.warn('[OmniRoute] Background Firestore place save:', err)
+      console.debug('[OmniRoute] Background Firestore place save:', err)
     })
   }
 
@@ -504,7 +503,7 @@ export async function updatePlace(
       setDoc(doc(db, 'campus_places', place.id), place, { merge: true }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000)),
     ]).catch((err) => {
-      console.warn('[OmniRoute] Background Firestore update:', err)
+      console.debug('[OmniRoute] Background Firestore update:', err)
     })
   }
 
@@ -533,7 +532,20 @@ export async function fetchRoads(): Promise<Road[]> {
     return cloudData
   }
 
-  // 2. Secondary: Cloud Firestore if live
+  // 2. Local storage cache (instant 0ms response)
+  const cached = localStorage.getItem(LOCAL_STORAGE_ROADS_KEY)
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Secondary: Cloud Firestore if live
   if (db) {
     try {
       const snap = await Promise.race([
@@ -563,21 +575,10 @@ export async function fetchRoads(): Promise<Road[]> {
         return cloudRoads
       }
     } catch (err) {
-      console.warn('[OmniRoute] Firestore roads fetch fallback:', err)
+      console.debug('[OmniRoute] Firestore roads fetch fallback:', err)
     }
   }
 
-  const cached = localStorage.getItem(LOCAL_STORAGE_ROADS_KEY)
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
-      }
-    } catch {
-      // ignore
-    }
-  }
   return campusRoadsData as Road[]
 }
 
@@ -726,10 +727,10 @@ export async function saveRoad(
         setDoc(doc(db, 'campus_roads', newRoad.id), firestoreRoadDoc),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000)),
       ]).catch((err) => {
-        console.warn('[OmniRoute] Background Firestore road save:', err)
+        console.debug('[OmniRoute] Background Firestore road save:', err)
       })
     } catch (err) {
-      console.warn('[OmniRoute] Firestore road format error:', err)
+      console.debug('[OmniRoute] Firestore road format error:', err)
     }
   }
 

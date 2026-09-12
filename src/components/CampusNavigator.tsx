@@ -849,12 +849,27 @@ export default function CampusNavigator({
 
     // High-contrast directional sun lighting for dramatic 3D facade depth and shadows
     try {
-      map.setLight({
-        anchor: 'viewport',
-        color: '#ffffff',
-        intensity: 0.72,
-        position: [1.3, 210, 32],
-      })
+      if (typeof (map as any).setLights === 'function') {
+        (map as any).setLights([
+          {
+            id: 'flat_sun',
+            type: 'flat',
+            properties: {
+              anchor: 'viewport',
+              color: '#ffffff',
+              intensity: 0.72,
+              position: [1.3, 210, 32],
+            },
+          },
+        ])
+      } else if (typeof map.setLight === 'function') {
+        map.setLight({
+          anchor: 'viewport',
+          color: '#ffffff',
+          intensity: 0.72,
+          position: [1.3, 210, 32],
+        })
+      }
     } catch {
       // quiet
     }
