@@ -20,6 +20,7 @@ import {
   Loader2,
   Edit3,
   Crosshair,
+  X,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import type { FeatureCollection, Feature } from 'geojson'
@@ -128,6 +129,9 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
   const [editPlaceDesc, setEditPlaceDesc] = useState('')
   const [editPlaceLat, setEditPlaceLat] = useState('')
   const [editPlaceLng, setEditPlaceLng] = useState('')
+  const [editPlaceFile, setEditPlaceFile] = useState<File | null>(null)
+  const [editPlaceImageUrl, setEditPlaceImageUrl] = useState('')
+  const [fixSearchQuery, setFixSearchQuery] = useState('')
   const [isPickingLocation, setIsPickingLocation] = useState(false)
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null)
@@ -845,6 +849,9 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     setEditPlaceDesc(place.description)
     setEditPlaceLat(place.latitude.toFixed(6))
     setEditPlaceLng(place.longitude.toFixed(6))
+    setEditPlaceImageUrl(place.image_url || '')
+    setEditPlaceFile(null)
+    setFixSearchQuery(place.name)
     setIsPickingLocation(true)
     setEditSuccessMsg(null)
     setEditErrorMsg(null)
@@ -885,6 +892,9 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     setIsPickingLocation(false)
     setEditSuccessMsg(null)
     setEditErrorMsg(null)
+    setEditPlaceFile(null)
+    setEditPlaceImageUrl('')
+    setFixSearchQuery('')
     if (editMarkerPreviewRef.current) {
       editMarkerPreviewRef.current.remove()
       editMarkerPreviewRef.current = null
@@ -924,6 +934,15 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
 
     setEditSubmitting(true)
     try {
+      let imageUrl = editPlaceImageUrl || editingPlace.image_url
+      if (editPlaceFile) {
+        try {
+          imageUrl = await uploadImageFile(editPlaceFile)
+        } catch (imgErr) {
+          console.warn('[OmniRoute] Image processing fallback:', imgErr)
+        }
+      }
+
       const updated: Place = {
         ...editingPlace,
         name: editPlaceName.trim() || editingPlace.name,
@@ -931,20 +950,22 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
         description: editPlaceDesc.trim(),
         latitude: lat,
         longitude: lng,
+        image_url: imageUrl,
       }
 
-      await updatePlace(updated)
-
-      // Update state
+      // 1. Immediately update UI and state so the map reflects changes in 0ms!
       setPlaces((prev) =>
         prev.map((p) => (p.id === updated.id ? updated : p))
       )
+
+      // 2. Persist to shared storage
+      await updatePlace(updated)
 
       setEditSuccessMsg(`"${updated.name}" updated successfully!`)
 
       setTimeout(() => {
         handleCloseEditPlace()
-      }, 1200)
+      }, 900)
     } catch (err: any) {
       setEditErrorMsg(err.message || 'Failed to update place location.')
     } finally {
@@ -1539,24 +1560,97 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Choose Location to Fix
+                    <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Choose Location to Fix</span>
+                      <span className="text-[10px] font-normal text-orange-600">Type or select landmark</span>
                     </label>
-                    <select
-                      value={editingPlace?.id || ''}
-                      onChange={(e) => {
-                        const p = places.find((item) => item.id === e.target.value)
-                        if (p) handleStartEditPlace(p)
-                      }}
-                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
-                    >
-                      <option value="" disabled>-- Select a campus landmark --</option>
-                      {places.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.category.replace('_', ' ')})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={fixSearchQuery}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setFixSearchQuery(val)
+                          const exact = places.find(
+                            (p) => p.name.toLowerCase() === val.trim().toLowerCase()
+                          )
+                          if (exact) {
+                            handleStartEditPlace(exact)
+                          }
+                        }}
+                        placeholder="Type location name (e.g. Unipolis, Block 34)..."
+                        className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 pl-9 pr-8 text-xs text-slate-800 placeholder:text-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none shadow-xs"
+                      />
+                      {fixSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFixSearchQuery('')
+                          }}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          title="Clear search"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Quick suggestions when typing */}
+                    {fixSearchQuery.trim() && !editingPlace && (
+                      <div className="mt-1.5 max-h-36 overflow-y-auto rounded-xl border border-orange-200/80 bg-white p-1 shadow-sm space-y-0.5">
+                        {places.filter((p) =>
+                          p.name.toLowerCase().includes(fixSearchQuery.toLowerCase())
+                        ).length > 0 ? (
+                          places
+                            .filter((p) =>
+                              p.name.toLowerCase().includes(fixSearchQuery.toLowerCase())
+                            )
+                            .map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setFixSearchQuery(p.name)
+                                  handleStartEditPlace(p)
+                                }}
+                                className="w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs hover:bg-orange-50 text-slate-700 transition cursor-pointer"
+                              >
+                                <span className="font-semibold truncate">{p.name}</span>
+                                <span className="text-[10px] text-slate-400 capitalize">
+                                  {p.category.replace('_', ' ')}
+                                </span>
+                              </button>
+                            ))
+                        ) : (
+                          <div className="px-2.5 py-2 text-[11px] text-slate-500 italic">
+                            No match found. Use "Add Place" tab to mark this new location.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Dropdown fallback to pick from all landmarks */}
+                    <div className="mt-2">
+                      <select
+                        value={editingPlace?.id || ''}
+                        onChange={(e) => {
+                          const p = places.find((item) => item.id === e.target.value)
+                          if (p) {
+                            setFixSearchQuery(p.name)
+                            handleStartEditPlace(p)
+                          }
+                        }}
+                        className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-1.5 px-3 text-[11px] text-slate-600 focus:border-orange-500 focus:bg-white focus:outline-none cursor-pointer"
+                      >
+                        <option value="" disabled>-- Or choose from all {places.length} landmarks --</option>
+                        {places.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.category.replace('_', ' ')})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   {editingPlace ? (
@@ -1690,6 +1784,55 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                           value={editPlaceDesc}
                           onChange={(e) => setEditPlaceDesc(e.target.value)}
                           className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      {/* Photo Attachment for Fix Location */}
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                          <span>Landmark Photo (Optional)</span>
+                          {editPlaceImageUrl && (
+                            <span className="text-[10px] text-emerald-600 font-medium">Photo attached</span>
+                          )}
+                        </label>
+
+                        {editPlaceImageUrl && (
+                          <div className="relative mb-2 inline-block rounded-xl overflow-hidden border border-orange-200/80 shadow-xs">
+                            <img
+                              src={editPlaceImageUrl}
+                              alt="Landmark preview"
+                              className="h-20 w-32 object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditPlaceImageUrl('')
+                                setEditPlaceFile(null)
+                              }}
+                              className="absolute top-1 right-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80 transition cursor-pointer"
+                              title="Remove photo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files ? e.target.files[0] : null
+                            setEditPlaceFile(file)
+                            if (file) {
+                              try {
+                                const preview = await uploadImageFile(file)
+                                setEditPlaceImageUrl(preview)
+                              } catch (err) {
+                                console.warn('Preview error:', err)
+                              }
+                            }
+                          }}
+                          className="w-full text-xs text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100/70 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-orange-800 hover:file:bg-orange-200/70 cursor-pointer"
                         />
                       </div>
 
