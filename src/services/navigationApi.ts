@@ -587,7 +587,21 @@ export async function fetchRoads(): Promise<Road[]> {
       ])
       const cloudRoads: Road[] = []
       snap.forEach((d) => {
-        cloudRoads.push(d.data() as Road)
+        const raw = d.data() as any
+        let coords: [number, number][] = raw.coordinates || []
+        if (raw.coordinates_json) {
+          try {
+            coords = JSON.parse(raw.coordinates_json)
+          } catch {}
+        } else if (
+          Array.isArray(coords) &&
+          coords.length > 0 &&
+          typeof coords[0] === 'object' &&
+          !Array.isArray(coords[0])
+        ) {
+          coords = (coords as any[]).map((pt: any) => [pt.lng, pt.lat])
+        }
+        cloudRoads.push({ ...raw, coordinates: coords } as Road)
       })
       if (cloudRoads.length > 0) {
         localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudRoads))
@@ -652,7 +666,21 @@ export function subscribeToRoads(callback: (roads: Road[]) => void): () => void 
       unsubFirestore = onSnapshot(collection(db, 'campus_roads'), (snap) => {
         const cloudRoads: Road[] = []
         snap.forEach((d) => {
-          cloudRoads.push(d.data() as Road)
+          const raw = d.data() as any
+          let coords: [number, number][] = raw.coordinates || []
+          if (raw.coordinates_json) {
+            try {
+              coords = JSON.parse(raw.coordinates_json)
+            } catch {}
+          } else if (
+            Array.isArray(coords) &&
+            coords.length > 0 &&
+            typeof coords[0] === 'object' &&
+            !Array.isArray(coords[0])
+          ) {
+            coords = (coords as any[]).map((pt: any) => [pt.lng, pt.lat])
+          }
+          cloudRoads.push({ ...raw, coordinates: coords } as Road)
         })
         if (cloudRoads.length > 0) {
           localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudRoads))
@@ -725,14 +753,23 @@ export async function saveRoad(
     }
   }
 
-  // 4. Non-blocking Firestore write (never hangs UI)
+  // 4. Non-blocking Firestore write (converts nested coordinate arrays for Firestore compliance)
   if (db) {
-    Promise.race([
-      setDoc(doc(db, 'campus_roads', newRoad.id), newRoad),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000)),
-    ]).catch((err) => {
-      console.warn('[OmniRoute] Background Firestore road save:', err)
-    })
+    try {
+      const firestoreRoadDoc = {
+        ...newRoad,
+        coordinates_json: JSON.stringify(newRoad.coordinates),
+        coordinates: newRoad.coordinates.map(([lng, lat]) => ({ lng, lat })),
+      }
+      Promise.race([
+        setDoc(doc(db, 'campus_roads', newRoad.id), firestoreRoadDoc),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000)),
+      ]).catch((err) => {
+        console.warn('[OmniRoute] Background Firestore road save:', err)
+      })
+    } catch (err) {
+      console.warn('[OmniRoute] Firestore road format error:', err)
+    }
   }
 
   return newRoad
