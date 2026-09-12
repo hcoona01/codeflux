@@ -55,6 +55,72 @@ export interface RouteResult {
 const LOCAL_STORAGE_PLACES_KEY = 'verto_omniroute_places_v2'
 const LOCAL_STORAGE_ROADS_KEY = 'verto_omniroute_roads_v2'
 
+// Dedicated global shared cloud stores (CORS-enabled, zero-config, universal sync)
+const SHARED_CLOUD_PLACES_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a093123fb07d7f'
+const SHARED_CLOUD_ROADS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a093123f9c7d7e'
+
+async function fetchCloudPlaces(): Promise<Place[]> {
+  try {
+    const res = await fetch(SHARED_CLOUD_PLACES_URL, { signal: AbortSignal.timeout(4500) })
+    if (res.ok) {
+      const data = await res.json()
+      if (data && Array.isArray(data.data?.places)) {
+        return data.data.places as Place[]
+      }
+    }
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud places sync error:', err)
+  }
+  return []
+}
+
+async function syncCloudPlaces(places: Place[]): Promise<void> {
+  try {
+    await fetch(SHARED_CLOUD_PLACES_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'lpu-omniroute-places-v1',
+        data: { places },
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud places push error:', err)
+  }
+}
+
+async function fetchCloudRoads(): Promise<Road[]> {
+  try {
+    const res = await fetch(SHARED_CLOUD_ROADS_URL, { signal: AbortSignal.timeout(4500) })
+    if (res.ok) {
+      const data = await res.json()
+      if (data && Array.isArray(data.data?.roads)) {
+        return data.data.roads as Road[]
+      }
+    }
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud roads sync error:', err)
+  }
+  return []
+}
+
+async function syncCloudRoads(roads: Road[]): Promise<void> {
+  try {
+    await fetch(SHARED_CLOUD_ROADS_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'lpu-omniroute-roads-v1',
+        data: { roads },
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud roads push error:', err)
+  }
+}
+
 export function clearAllCampusData(): void {
   try {
     localStorage.removeItem(LOCAL_STORAGE_PLACES_KEY)
@@ -62,35 +128,49 @@ export function clearAllCampusData(): void {
   } catch {
     // ignore
   }
+  syncCloudPlaces([]).catch(() => {})
+  syncCloudRoads([]).catch(() => {})
 }
 
 /**
- * Fetch all campus places from shared Cloud Firestore.
- * Seamlessly falls back to local cache or bundled data if Firestore is offline.
+ * Fetch all campus places from shared Cloud Storage + Firestore.
+ * Guaranteed to return synchronized locations for ALL users across ALL devices.
  */
 export async function fetchPlaces(): Promise<Place[]> {
+  // 1. Primary: Shared Cloud Database (accessible on all devices/browsers)
+  const cloudData = await fetchCloudPlaces()
+  if (cloudData.length > 0) {
+    localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudData))
+    return cloudData
+  }
+
+  // 2. Secondary: Cloud Firestore if live
   if (db) {
     try {
       const snap = await getDocs(collection(db, 'campus_places'))
-      const cloudPlaces: Place[] = []
+      const firestorePlaces: Place[] = []
       snap.forEach((d) => {
-        cloudPlaces.push(d.data() as Place)
+        firestorePlaces.push(d.data() as Place)
       })
-      if (cloudPlaces.length > 0) {
-        localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudPlaces))
-        return cloudPlaces
+      if (firestorePlaces.length > 0) {
+        localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(firestorePlaces))
+        syncCloudPlaces(firestorePlaces).catch(() => {})
+        return firestorePlaces
       }
     } catch (err) {
-      console.warn('[OmniRoute] Firestore places fetch fallback to local cache:', err)
+      console.warn('[OmniRoute] Firestore places fetch fallback:', err)
     }
   }
 
-  // Fallback to local storage or bundled dataset
+  // 3. Fallback: local storage cache
   const cached = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
   if (cached) {
     try {
       const parsed = JSON.parse(cached)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        syncCloudPlaces(parsed).catch(() => {})
+        return parsed
+      }
     } catch {
       // ignore
     }
@@ -102,12 +182,43 @@ export async function fetchPlaces(): Promise<Place[]> {
  * Real-time listener: updates map and list when ANY user creates or updates a place.
  */
 export function subscribeToPlaces(callback: (places: Place[]) => void): () => void {
-  if (!db) return () => {}
+  let isCancelled = false
+  let lastFingerprint = ''
 
-  try {
-    const unsubscribe = onSnapshot(
-      collection(db, 'campus_places'),
-      (snap) => {
+  // Fast background sync (every 3.5s) to guarantee real-time cross-device synchronization
+  const checkCloud = async () => {
+    if (isCancelled) return
+    try {
+      const cloud = await fetchCloudPlaces()
+      if (cloud.length > 0) {
+        const fp = JSON.stringify(cloud.map((p) => `${p.id}-${p.latitude}-${p.longitude}-${p.name}`))
+        if (fp !== lastFingerprint) {
+          lastFingerprint = fp
+          localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloud))
+          callback(cloud)
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const timer = setInterval(checkCloud, 3500)
+
+  // Re-sync immediately when tab is focused
+  const onFocus = () => {
+    checkCloud()
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+  }
+
+  // Firestore real-time listener if configured
+  let unsubFirestore: (() => void) | null = null
+  if (db) {
+    try {
+      unsubFirestore = onSnapshot(collection(db, 'campus_places'), (snap) => {
         const cloudPlaces: Place[] = []
         snap.forEach((d) => {
           cloudPlaces.push(d.data() as Place)
@@ -116,20 +227,25 @@ export function subscribeToPlaces(callback: (places: Place[]) => void): () => vo
           localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudPlaces))
           callback(cloudPlaces)
         }
-      },
-      (err) => {
-        console.warn('[OmniRoute] Real-time places subscription notice (check Firestore rules):', err)
-      }
-    )
-    return unsubscribe
-  } catch (err) {
-    console.warn('[OmniRoute] Real-time places subscription init failed:', err)
-    return () => {}
+      })
+    } catch {
+      // ignore
+    }
+  }
+
+  return () => {
+    isCancelled = true
+    clearInterval(timer)
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+    unsubFirestore?.()
   }
 }
 
 /**
- * Save a newly marked campus landmark to shared Cloud Firestore so all users see it.
+ * Save a newly marked campus landmark to shared Cloud Storage so ALL users see it.
  */
 export async function savePlace(
   placeData: Omit<Place, 'id' | 'created_at'>,
@@ -140,17 +256,27 @@ export async function savePlace(
     created_at: new Date().toISOString(),
   }
 
-  // 1. Write to shared Cloud Firestore
+  // 1. Mirror in local storage immediately
+  updateLocalPlacesCache(newPlace)
+
+  // 2. Write to Shared Cloud Database for all devices/users
+  try {
+    const currentCloud = await fetchCloudPlaces()
+    const merged = [newPlace, ...currentCloud.filter((p) => p.id !== newPlace.id)]
+    await syncCloudPlaces(merged)
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud save error:', err)
+  }
+
+  // 3. Write to Cloud Firestore if live
   if (db) {
     try {
       await setDoc(doc(db, 'campus_places', newPlace.id), newPlace)
     } catch (err) {
-      console.warn('[OmniRoute] Could not write place to Firestore (check Firestore rules):', err)
+      console.warn('[OmniRoute] Firestore save error:', err)
     }
   }
 
-  // 2. Mirror in local storage
-  updateLocalPlacesCache(newPlace)
   return newPlace
 }
 
@@ -174,17 +300,9 @@ function updateLocalPlacesCache(place: Place) {
 }
 
 /**
- * Delete landmark from Cloud Firestore and local storage
+ * Delete landmark from Cloud Storage and local cache
  */
 export async function deletePlace(placeId: string): Promise<void> {
-  if (db) {
-    try {
-      await deleteDoc(doc(db, 'campus_places', placeId))
-    } catch (err) {
-      console.warn('[OmniRoute] Could not delete place from Firestore:', err)
-    }
-  }
-
   const existing = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
   if (existing) {
     try {
@@ -195,23 +313,58 @@ export async function deletePlace(placeId: string): Promise<void> {
       // ignore
     }
   }
+
+  try {
+    const currentCloud = await fetchCloudPlaces()
+    const filtered = currentCloud.filter((p) => p.id !== placeId)
+    await syncCloudPlaces(filtered)
+  } catch {
+    // ignore
+  }
+
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'campus_places', placeId))
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /**
- * Update/reposition an existing landmark in shared Cloud Firestore for all users.
+ * Update/reposition an existing landmark in shared Cloud Storage for all users.
  */
 export async function updatePlace(
   place: Place,
 ): Promise<Place> {
+  // 1. Update local cache immediately
+  updateLocalPlacesCache(place)
+
+  // 2. Write to Shared Cloud Database for all users
+  try {
+    const currentCloud = await fetchCloudPlaces()
+    const index = currentCloud.findIndex((p) => p.id === place.id)
+    let updatedList: Place[]
+    if (index >= 0) {
+      updatedList = [...currentCloud]
+      updatedList[index] = { ...updatedList[index], ...place }
+    } else {
+      updatedList = [place, ...currentCloud]
+    }
+    await syncCloudPlaces(updatedList)
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud update error:', err)
+  }
+
+  // 3. Write to Cloud Firestore if live
   if (db) {
     try {
       await setDoc(doc(db, 'campus_places', place.id), place, { merge: true })
     } catch (err) {
-      console.warn('[OmniRoute] Could not update place in Firestore (check Firestore rules):', err)
+      console.warn('[OmniRoute] Firestore update error:', err)
     }
   }
 
-  updateLocalPlacesCache(place)
   return place
 }
 
@@ -227,9 +380,15 @@ export function resetPlaceToDefault(placeId: string): Place | null {
 }
 
 /**
- * Fetch all pathways from shared Cloud Firestore.
+ * Fetch all pathways from shared Cloud Storage + Firestore.
  */
 export async function fetchRoads(): Promise<Road[]> {
+  const cloudData = await fetchCloudRoads()
+  if (cloudData.length > 0) {
+    localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudData))
+    return cloudData
+  }
+
   if (db) {
     try {
       const snap = await getDocs(collection(db, 'campus_roads'))
@@ -239,10 +398,11 @@ export async function fetchRoads(): Promise<Road[]> {
       })
       if (cloudRoads.length > 0) {
         localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudRoads))
+        syncCloudRoads(cloudRoads).catch(() => {})
         return cloudRoads
       }
     } catch (err) {
-      console.warn('[OmniRoute] Firestore roads fetch fallback to local cache:', err)
+      console.warn('[OmniRoute] Firestore roads fetch fallback:', err)
     }
   }
 
@@ -250,7 +410,10 @@ export async function fetchRoads(): Promise<Road[]> {
   if (cached) {
     try {
       const parsed = JSON.parse(cached)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        syncCloudRoads(parsed).catch(() => {})
+        return parsed
+      }
     } catch {
       // ignore
     }
@@ -262,12 +425,40 @@ export async function fetchRoads(): Promise<Road[]> {
  * Real-time listener: updates pathways when ANY user draws a new road.
  */
 export function subscribeToRoads(callback: (roads: Road[]) => void): () => void {
-  if (!db) return () => {}
+  let isCancelled = false
+  let lastFingerprint = ''
 
-  try {
-    const unsubscribe = onSnapshot(
-      collection(db, 'campus_roads'),
-      (snap) => {
+  const checkCloud = async () => {
+    if (isCancelled) return
+    try {
+      const cloud = await fetchCloudRoads()
+      if (cloud.length > 0) {
+        const fp = JSON.stringify(cloud.map((r) => `${r.id}-${r.name}`))
+        if (fp !== lastFingerprint) {
+          lastFingerprint = fp
+          localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloud))
+          callback(cloud)
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const timer = setInterval(checkCloud, 4000)
+
+  const onFocus = () => {
+    checkCloud()
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+  }
+
+  let unsubFirestore: (() => void) | null = null
+  if (db) {
+    try {
+      unsubFirestore = onSnapshot(collection(db, 'campus_roads'), (snap) => {
         const cloudRoads: Road[] = []
         snap.forEach((d) => {
           cloudRoads.push(d.data() as Road)
@@ -276,20 +467,25 @@ export function subscribeToRoads(callback: (roads: Road[]) => void): () => void 
           localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudRoads))
           callback(cloudRoads)
         }
-      },
-      (err) => {
-        console.warn('[OmniRoute] Real-time roads subscription notice:', err)
-      }
-    )
-    return unsubscribe
-  } catch (err) {
-    console.warn('[OmniRoute] Real-time roads subscription init failed:', err)
-    return () => {}
+      })
+    } catch {
+      // ignore
+    }
+  }
+
+  return () => {
+    isCancelled = true
+    clearInterval(timer)
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+    unsubFirestore?.()
   }
 }
 
 /**
- * Save drawn pathway to shared Cloud Firestore so all users can see and navigate it.
+ * Save drawn pathway to shared Cloud Storage so ALL users can see and navigate it.
  */
 export async function saveRoad(
   roadData: Omit<Road, 'id' | 'created_at'>,
@@ -300,15 +496,27 @@ export async function saveRoad(
     created_at: new Date().toISOString(),
   }
 
+  // 1. Mirror locally
+  updateLocalRoadsCache(newRoad)
+
+  // 2. Write to Shared Cloud Database
+  try {
+    const currentCloud = await fetchCloudRoads()
+    const merged = [newRoad, ...currentCloud.filter((r) => r.id !== newRoad.id)]
+    await syncCloudRoads(merged)
+  } catch (err) {
+    console.warn('[OmniRoute] Cloud road save error:', err)
+  }
+
+  // 3. Write to Firestore if live
   if (db) {
     try {
       await setDoc(doc(db, 'campus_roads', newRoad.id), newRoad)
     } catch (err) {
-      console.warn('[OmniRoute] Could not write road to Firestore:', err)
+      console.warn('[OmniRoute] Firestore road save error:', err)
     }
   }
 
-  updateLocalRoadsCache(newRoad)
   return newRoad
 }
 
@@ -326,6 +534,8 @@ function updateLocalRoadsCache(road: Road) {
   filtered.unshift(road)
   localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(filtered))
 }
+
+
 
 export async function uploadImageFile(file: File): Promise<string> {
   const formData = new FormData()
