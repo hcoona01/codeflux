@@ -308,9 +308,9 @@ export default function CampusNavigator({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: LPU_CENTER_COORDS,
-      zoom: 16.5,
-      pitch: 55,
-      bearing: -20,
+      zoom: 16.2,
+      pitch: 52,
+      bearing: -15,
       attributionControl: false,
     })
 
@@ -374,9 +374,10 @@ export default function CampusNavigator({
     }
   }, [])
 
-  // 3D Terrain mesh: drapes and wraps the 2D map over physical 3D elevation
+  // 3D Terrain mesh without foggy haze
   const setup3dTerrain = (map: mapboxgl.Map) => {
     try {
+      // 1. Add 3D Terrain DEM mesh
       if (!map.getSource('mapbox-dem')) {
         map.addSource('mapbox-dem', {
           type: 'raster-dem',
@@ -385,9 +386,9 @@ export default function CampusNavigator({
           maxzoom: 14,
         })
       }
-      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.6 })
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 })
 
-      // Completely remove any foggy/hazy effect for 100% crisp visibility
+      // 2. Completely remove any foggy/hazy effect for 100% crisp visibility
       try {
         map.setFog(null as any)
       } catch {}
@@ -396,7 +397,7 @@ export default function CampusNavigator({
     }
   }
 
-  // 3D Buildings: projects the 2D map into 3D while preserving underlying satellite / street imagery
+  // 3D Buildings setup directly according to 2D Map building footprints
   const setup3dBuildings = (map: mapboxgl.Map, isSat: boolean) => {
     const layers = map.getStyle()?.layers || []
     const labelLayerId = layers.find(
@@ -410,80 +411,54 @@ export default function CampusNavigator({
     if (map.getSource('lpu-3d-landmarks')) {
       map.removeSource('lpu-3d-landmarks')
     }
-    if (map.getLayer('3d-buildings-outline')) {
-      map.removeLayer('3d-buildings-outline')
-    }
-    if (map.getLayer('3d-buildings')) {
-      map.removeLayer('3d-buildings')
-    }
 
-    if (!map.getSource('composite')) return
-
-    // 1. Crisp architectural perimeter framing on the 2D map
-    map.addLayer(
-      {
-        id: '3d-buildings-outline',
-        source: 'composite',
-        'source-layer': 'building',
-        filter: ['==', 'extrude', 'true'],
-        type: 'line',
-        minzoom: 14,
-        paint: {
-          'line-color': isSat ? '#38bdf8' : '#64748b',
-          'line-width': 1.5,
-          'line-opacity': isSat ? 0.65 : 0.45,
+    // 3D structures configured from the 2D map's actual vector building footprints
+    if (!map.getLayer('3d-buildings') && map.getSource('composite')) {
+      map.addLayer(
+        {
+          id: '3d-buildings',
+          source: 'composite',
+          'source-layer': 'building',
+          filter: ['==', 'extrude', 'true'],
+          type: 'fill-extrusion',
+          minzoom: 14,
+          paint: {
+            // In satellite mode: realistic translucent glass volume so real satellite rooftops & textures show through
+            // In 2D map streets mode: clean architectural neutral tone matching the 2D map layout
+            'fill-extrusion-color': isSat ? '#f1f5f9' : '#cbd5e1',
+            'fill-extrusion-height': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              14,
+              0,
+              14.5,
+              ['coalesce', ['get', 'height'], 16],
+            ],
+            'fill-extrusion-base': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              14,
+              0,
+              14.5,
+              ['coalesce', ['get', 'min_height'], 0],
+            ],
+            'fill-extrusion-opacity': isSat ? 0.32 : 0.75,
+            'fill-extrusion-vertical-gradient': true,
+          },
         },
-      },
-      labelLayerId,
-    )
+        labelLayerId,
+      )
+    }
 
-    // 2. 3D building projection volume that keeps 2D map imagery visible on rooftops
-    map.addLayer(
-      {
-        id: '3d-buildings',
-        source: 'composite',
-        'source-layer': 'building',
-        filter: ['==', 'extrude', 'true'],
-        type: 'fill-extrusion',
-        minzoom: 14,
-        paint: {
-          // In satellite mode: ultra-subtle translucent architectural glass (#bae6fd, 0.16 opacity)
-          // so the real 2D satellite photo (rooftop structures, solar panels, courtyards, paths)
-          // is completely visible and wraps directly through the 3D volume!
-          // In streets mode: architectural light tone (0.35 opacity) preserving the 2D street map details
-          'fill-extrusion-color': isSat ? '#bae6fd' : '#e2e8f0',
-          'fill-extrusion-height': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            14,
-            0,
-            14.5,
-            ['coalesce', ['get', 'height'], 18],
-          ],
-          'fill-extrusion-base': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            14,
-            0,
-            14.5,
-            ['coalesce', ['get', 'min_height'], 0],
-          ],
-          'fill-extrusion-opacity': isSat ? 0.16 : 0.35,
-          'fill-extrusion-vertical-gradient': true,
-        },
-      },
-      labelLayerId,
-    )
-
-    // Directional sunlight casting realistic highlights on vertical 3D walls
+    // Directional lighting without fog
     try {
       map.setLight({
         anchor: 'viewport',
         color: '#ffffff',
-        intensity: 0.45,
-        position: [1.2, 180, 40],
+        intensity: 0.35,
+        position: [1.15, 210, 30],
       })
     } catch {
       // quiet
@@ -808,56 +783,20 @@ export default function CampusNavigator({
         setup3dTerrain(mapRef.current)
         setup3dBuildings(mapRef.current, nextIsSat)
         setupRoadsSourceAndLayer(mapRef.current, roads)
-
-        if (is3dMode) {
-          mapRef.current.setTerrain({ source: 'mapbox-dem', exaggeration: 1.6 })
-          if (mapRef.current.getLayer('3d-buildings')) {
-            mapRef.current.setLayoutProperty('3d-buildings', 'visibility', 'visible')
-          }
-          if (mapRef.current.getLayer('3d-buildings-outline')) {
-            mapRef.current.setLayoutProperty('3d-buildings-outline', 'visibility', 'visible')
-          }
-        } else {
-          mapRef.current.setTerrain(null)
-          if (mapRef.current.getLayer('3d-buildings')) {
-            mapRef.current.setLayoutProperty('3d-buildings', 'visibility', 'none')
-          }
-          if (mapRef.current.getLayer('3d-buildings-outline')) {
-            mapRef.current.setLayoutProperty('3d-buildings-outline', 'visibility', 'none')
-          }
-        }
       }
     })
   }
 
-  // 3D Perspective Pitch Toggle: dynamically wraps / unwraps 2D map on 3D projections
+  // 3D Perspective Pitch Toggle
   const toggle3dPitch = () => {
     if (!mapRef.current) return
     const next = !is3dMode
     setIs3dMode(next)
     mapRef.current.easeTo({
-      pitch: next ? 55 : 0,
-      bearing: next ? -20 : 0,
+      pitch: next ? 52 : 0,
+      bearing: next ? -15 : 0,
       duration: 1000,
     })
-
-    if (next) {
-      mapRef.current.setTerrain({ source: 'mapbox-dem', exaggeration: 1.6 })
-      if (mapRef.current.getLayer('3d-buildings')) {
-        mapRef.current.setLayoutProperty('3d-buildings', 'visibility', 'visible')
-      }
-      if (mapRef.current.getLayer('3d-buildings-outline')) {
-        mapRef.current.setLayoutProperty('3d-buildings-outline', 'visibility', 'visible')
-      }
-    } else {
-      mapRef.current.setTerrain(null)
-      if (mapRef.current.getLayer('3d-buildings')) {
-        mapRef.current.setLayoutProperty('3d-buildings', 'visibility', 'none')
-      }
-      if (mapRef.current.getLayer('3d-buildings-outline')) {
-        mapRef.current.setLayoutProperty('3d-buildings-outline', 'visibility', 'none')
-      }
-    }
   }
 
   // Handle Calculate Route
@@ -2207,7 +2146,7 @@ export default function CampusNavigator({
               title="Toggle 3D Terrain & Building Perspective"
             >
               <Compass className="h-3.5 w-3.5" />
-              <span>{is3dMode ? '3D Projection (55°)' : '2D Map View'}</span>
+              <span>{is3dMode ? '3D View (52°)' : '2D Top-Down'}</span>
             </button>
           </div>
 
