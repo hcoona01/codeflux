@@ -127,11 +127,13 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
 interface CampusHeroProps {
   onOpenNavigator?: (category?: string) => void
   onOpenLostAndFound?: () => void
+  onOpenEvents?: () => void
 }
 
 export default function CampusHero({
   onOpenNavigator,
   onOpenLostAndFound,
+  onOpenEvents,
 }: CampusHeroProps = {}) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [isAnimating, setIsAnimating] = useState(false)
@@ -263,7 +265,7 @@ export default function CampusHero({
         />
 
         {/* Top Header & Navigation Tabs */}
-        <div className="absolute top-1 inset-x-3 z-[60] flex flex-col sm:top-2 sm:left-8 sm:inset-x-auto sm:w-auto">
+        <div className="absolute top-3 inset-x-3 z-[60] flex flex-col sm:top-6 sm:left-8 sm:inset-x-auto sm:w-auto">
           {/* Top Bar on Mobile: Brand on Left, LPU Logo on Right */}
           <div className="flex items-center justify-between w-full sm:block">
             <p
@@ -299,6 +301,8 @@ export default function CampusHero({
                       onOpenNavigator('student_spot')
                     } else if (slide.tab === 'Lost & Found' && onOpenLostAndFound) {
                       onOpenLostAndFound()
+                    } else if (slide.tab === 'Campus Events' && onOpenEvents) {
+                      onOpenEvents()
                     } else if (selected && slide.tab === 'Navigation' && onOpenNavigator) {
                       onOpenNavigator()
                     } else {
@@ -494,6 +498,9 @@ export default function CampusHero({
             } else if (active.tab === 'Lost & Found' && onOpenLostAndFound) {
               e.preventDefault()
               onOpenLostAndFound()
+            } else if (active.tab === 'Campus Events' && onOpenEvents) {
+              e.preventDefault()
+              onOpenEvents()
             } else if (active.tab === 'Navigation' && onOpenNavigator) {
               e.preventDefault()
               onOpenNavigator()

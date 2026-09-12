@@ -854,6 +854,7 @@ export function computeCampusRoadRoute(
   destination: [number, number],
   mode: 'walking' | 'cycling' | 'driving' = 'walking',
   customRoads: Road[] = [],
+  maxSnapMeters: number = 60,
 ): RouteResult | null {
   if (!customRoads || customRoads.length === 0) return null
 
@@ -911,34 +912,42 @@ export function computeCampusRoadRoute(
     }
   }
 
-  // 3. Connect ORIGIN to candidate road entry points (top 3 closest within 550m)
+  // 3. Connect ORIGIN & DEST ONLY if the point is actually situated on or adjacent to a contributed road (<= maxSnapMeters).
+  // NEVER assume a direct connection or draw imaginary straight lines across buildings/lawns to distant road nodes!
+  const MAX_ROAD_SNAP_METERS = maxSnapMeters
+
   const originCandidates: { node: string; dist: number }[] = []
   const destCandidates: { node: string; dist: number }[] = []
 
   nodeCoords.forEach((coord, u) => {
     if (u === 'ORIGIN' || u === 'DEST') return
     const dOrig = haversineDistance(origin, coord)
-    originCandidates.push({ node: u, dist: dOrig })
+    if (dOrig <= MAX_ROAD_SNAP_METERS) {
+      originCandidates.push({ node: u, dist: dOrig })
+    }
 
     const dDest = haversineDistance(destination, coord)
-    destCandidates.push({ node: u, dist: dDest })
+    if (dDest <= MAX_ROAD_SNAP_METERS) {
+      destCandidates.push({ node: u, dist: dDest })
+    }
   })
 
   originCandidates.sort((a, b) => a.dist - b.dist)
   destCandidates.sort((a, b) => a.dist - b.dist)
 
-  originCandidates.slice(0, 3).forEach((c) => {
-    if (c.dist <= 550) {
-      const roadInfo = nodeRoadMap.get(c.node)
-      addEdge('ORIGIN', c.node, c.dist, roadInfo?.name || 'Campus Pathway', roadInfo?.category || 'walkway', false)
-    }
+  // If ORIGIN is not physically on a custom road, or DEST is not physically on a custom road, do not connect!
+  if (originCandidates.length === 0 || destCandidates.length === 0) {
+    return null
+  }
+
+  originCandidates.slice(0, 2).forEach((c) => {
+    const roadInfo = nodeRoadMap.get(c.node)
+    addEdge('ORIGIN', c.node, c.dist, roadInfo?.name || 'Campus Pathway', roadInfo?.category || 'walkway', false)
   })
 
-  destCandidates.slice(0, 3).forEach((c) => {
-    if (c.dist <= 550) {
-      const roadInfo = nodeRoadMap.get(c.node)
-      addEdge(c.node, 'DEST', c.dist, roadInfo?.name || 'Destination', roadInfo?.category || 'walkway', false)
-    }
+  destCandidates.slice(0, 2).forEach((c) => {
+    const roadInfo = nodeRoadMap.get(c.node)
+    addEdge(c.node, 'DEST', c.dist, roadInfo?.name || 'Destination', roadInfo?.category || 'walkway', false)
   })
 
   if (!adj.has('ORIGIN') || !adj.has('DEST')) return null
@@ -1092,33 +1101,21 @@ export function computeCampusRoadRoute(
   }
 }
 
-export async function fetchMapboxRoute(
+// Helper to query official map routes via Mapbox Directions API
+async function queryMapboxDirections(
   origin: [number, number],
   destination: [number, number],
   mode: 'walking' | 'cycling' | 'driving' = 'walking',
-  customRoads: Road[] = [],
-): Promise<RouteResult> {
-  // 1. Try finding an optimal route via custom campus roads network
-  let campusRoute: RouteResult | null = null
-  if (customRoads && customRoads.length > 0) {
-    try {
-      campusRoute = computeCampusRoadRoute(origin, destination, mode, customRoads)
-    } catch (err) {
-      console.warn('[OmniRoute] Campus road routing error:', err)
-    }
+): Promise<RouteResult | null> {
+  const profileMap = {
+    walking: 'walking',
+    cycling: 'cycling',
+    driving: 'driving',
   }
+  const profile = profileMap[mode] || 'walking'
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${origin[0]},${origin[1]};${destination[0]},${destination[1]}?steps=true&geometries=geojson&overview=full&access_token=${MAPBOX_PUBLIC_TOKEN}`
 
-  // 2. Fetch standard Mapbox route
-  let mapboxRoute: RouteResult | null = null
   try {
-    const profileMap = {
-      walking: 'walking',
-      cycling: 'cycling',
-      driving: 'driving',
-    }
-    const profile = profileMap[mode] || 'walking'
-    const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${origin[0]},${origin[1]};${destination[0]},${destination[1]}?steps=true&geometries=geojson&overview=full&access_token=${MAPBOX_PUBLIC_TOKEN}`
-
     const res = await fetch(url)
     if (res.ok) {
       const data = await res.json()
@@ -1136,7 +1133,7 @@ export async function fetchMapboxRoute(
             })
           })
         }
-        mapboxRoute = {
+        return {
           distance: Math.round(route.distance),
           duration: Math.round(route.duration / 60),
           geometry: route.geometry,
@@ -1145,24 +1142,229 @@ export async function fetchMapboxRoute(
         }
       }
     }
-  } catch (err) {
-    console.warn('[OmniRoute] Mapbox directions fallback:', err)
-  }
 
-  // 3. Intelligent Selection:
-  if (campusRoute) {
-    // If Mapbox failed, or custom route is shorter / comparable shortcut, prioritize campus pathway
-    if (!mapboxRoute || campusRoute.distance <= mapboxRoute.distance * 1.1) {
-      return campusRoute
+    // Fallback driving profile if walking profile had no direct path across highways or distant points
+    if (mode !== 'driving') {
+      const fallbackUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${origin[0]},${origin[1]};${destination[0]},${destination[1]}?steps=true&geometries=geojson&overview=full&access_token=${MAPBOX_PUBLIC_TOKEN}`
+      const fRes = await fetch(fallbackUrl)
+      if (fRes.ok) {
+        const fData = await fRes.json()
+        if (fData.routes && fData.routes.length > 0) {
+          const fRoute = fData.routes[0]
+          const fSteps: RouteStep[] = []
+          if (fRoute.legs && fRoute.legs[0] && fRoute.legs[0].steps) {
+            fRoute.legs[0].steps.forEach((step: any) => {
+              fSteps.push({
+                instruction: step.maneuver ? step.maneuver.instruction : 'Continue straight',
+                distance: Math.round(step.distance),
+                duration: Math.round(step.duration),
+                maneuverType: step.maneuver?.type,
+                location: step.maneuver?.location ? [step.maneuver.location[0], step.maneuver.location[1]] : undefined,
+              })
+            })
+          }
+          return {
+            distance: Math.round(fRoute.distance),
+            duration: Math.round(fRoute.duration / 60),
+            geometry: fRoute.geometry,
+            steps: fSteps,
+            isCampusShortcut: false,
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[OmniRoute] queryMapboxDirections error:', err)
+  }
+  return null
+}
+
+// Evaluates contributed roads to see if they provide a genuine physical shortcut between map routes
+async function findOptimalCampusRouteWithShortcuts(
+  origin: [number, number],
+  destination: [number, number],
+  mode: 'walking' | 'cycling' | 'driving' = 'walking',
+  customRoads: Road[] = [],
+  baselineRoute: RouteResult | null,
+): Promise<RouteResult | null> {
+  if (!customRoads || customRoads.length === 0) return null
+
+  // 1. Direct custom roads network (when both origin and destination are nearby, <= 60m)
+  const directCampus = computeCampusRoadRoute(origin, destination, mode, customRoads, 60)
+  if (directCampus) {
+    if (!baselineRoute || directCampus.distance <= baselineRoute.distance) {
+      return directCampus
     }
   }
 
+  const baselineDist = baselineRoute ? baselineRoute.distance : Infinity
+  let bestRoute: RouteResult | null = directCampus && directCampus.distance < baselineDist ? directCampus : null
+  let bestDist = bestRoute ? bestRoute.distance : baselineDist
+
+  // 2. Evaluate each custom road as a connector/shortcut between map routes
+  const eligibleRoads = customRoads.filter((r) => {
+    if (!r.coordinates || r.coordinates.length < 2) return false
+    if (mode === 'driving' && r.category === 'pedestrian') return false
+    return true
+  })
+
+  for (const road of eligibleRoads) {
+    const coords = road.coordinates
+    const n = coords.length
+    if (n < 2) continue
+
+    // Find node closest to origin and node closest to destination
+    let bestOrigIdx = 0
+    let minOrigDist = Infinity
+    let bestDestIdx = 0
+    let minDestDist = Infinity
+
+    for (let i = 0; i < n; i++) {
+      const dO = haversineDistance(origin, coords[i])
+      if (dO < minOrigDist) {
+        minOrigDist = dO
+        bestOrigIdx = i
+      }
+      const dD = haversineDistance(destination, coords[i])
+      if (dD < minDestDist) {
+        minDestDist = dD
+        bestDestIdx = i
+      }
+    }
+
+    if (bestOrigIdx === bestDestIdx) continue
+
+    // Calculate length along the custom road segment between bestOrigIdx and bestDestIdx
+    const stepDir = bestOrigIdx < bestDestIdx ? 1 : -1
+    const roadSegmentCoords: [number, number][] = []
+    let roadDist = 0
+    for (let i = bestOrigIdx; stepDir > 0 ? i <= bestDestIdx : i >= bestDestIdx; i += stepDir) {
+      roadSegmentCoords.push(coords[i])
+      if (roadSegmentCoords.length > 1) {
+        roadDist += haversineDistance(roadSegmentCoords[roadSegmentCoords.length - 2], roadSegmentCoords[roadSegmentCoords.length - 1])
+      }
+    }
+
+    const estimatedTotal = minOrigDist + roadDist + minDestDist
+    // Only check if this candidate shortcut could realistically beat the current best distance by at least 40m
+    if (estimatedTotal >= bestDist - 40) continue
+
+    try {
+      const entryCoord = roadSegmentCoords[0]
+      const exitCoord = roadSegmentCoords[roadSegmentCoords.length - 1]
+
+      // Leg 1: From origin to custom road entrance along actual map routes
+      let leg1Coords: [number, number][] = []
+      let leg1Dist = 0
+      let leg1Steps: RouteStep[] = []
+
+      if (minOrigDist <= 30) {
+        leg1Coords = [origin, entryCoord]
+        leg1Dist = minOrigDist
+      } else {
+        const m1 = await queryMapboxDirections(origin, entryCoord, mode)
+        if (!m1 || !m1.geometry?.coordinates) continue
+        leg1Coords = m1.geometry.coordinates
+        leg1Dist = m1.distance
+        leg1Steps = m1.steps
+      }
+
+      // Leg 2: From custom road exit to destination along actual map routes
+      let leg2Coords: [number, number][] = []
+      let leg2Dist = 0
+      let leg2Steps: RouteStep[] = []
+
+      if (minDestDist <= 30) {
+        leg2Coords = [exitCoord, destination]
+        leg2Dist = minDestDist
+      } else {
+        const m2 = await queryMapboxDirections(exitCoord, destination, mode)
+        if (!m2 || !m2.geometry?.coordinates) continue
+        leg2Coords = m2.geometry.coordinates
+        leg2Dist = m2.distance
+        leg2Steps = m2.steps
+      }
+
+      const actualTotalDist = Math.round(leg1Dist + roadDist + leg2Dist)
+      if (actualTotalDist < bestDist) {
+        bestDist = actualTotalDist
+        const speed = mode === 'driving' ? 7.0 : mode === 'cycling' ? 4.2 : 1.35
+        const durationMin = Math.max(1, Math.round(actualTotalDist / speed / 60))
+
+        const combinedCoords: [number, number][] = [
+          ...leg1Coords,
+          ...roadSegmentCoords.slice(1),
+          ...(leg2Coords.length > 1 ? leg2Coords.slice(1) : []),
+        ]
+
+        const combinedSteps: RouteStep[] = [
+          ...leg1Steps,
+          {
+            instruction: `Take shortcut via ${road.name} (${road.category.replace('_', ' ')})`,
+            distance: Math.round(roadDist),
+            duration: Math.round(roadDist / speed),
+            maneuverType: 'turn',
+            location: entryCoord,
+          },
+          ...leg2Steps,
+        ]
+
+        bestRoute = {
+          distance: actualTotalDist,
+          duration: durationMin,
+          geometry: {
+            type: 'LineString',
+            coordinates: combinedCoords,
+          },
+          steps: combinedSteps,
+          isCampusShortcut: true,
+          shortcutRoadNames: [road.name],
+        }
+      }
+    } catch (err) {
+      console.warn('[OmniRoute] Shortcut evaluation error:', err)
+    }
+  }
+
+  return bestRoute
+}
+
+export async function fetchMapboxRoute(
+  origin: [number, number],
+  destination: [number, number],
+  mode: 'walking' | 'cycling' | 'driving' = 'walking',
+  customRoads: Road[] = [],
+): Promise<RouteResult> {
+  // 1. Fetch standard Mapbox route on actual map roads
+  const mapboxRoute = await queryMapboxDirections(origin, destination, mode)
+
+  // 2. Evaluate if a contributed road provides a verified shortcut or short navigation
+  if (customRoads && customRoads.length > 0) {
+    try {
+      const shortcutRoute = await findOptimalCampusRouteWithShortcuts(
+        origin,
+        destination,
+        mode,
+        customRoads,
+        mapboxRoute,
+      )
+      if (shortcutRoute && (!mapboxRoute || shortcutRoute.distance < mapboxRoute.distance)) {
+        return shortcutRoute
+      }
+    } catch (err) {
+      console.warn('[OmniRoute] Campus shortcut evaluation error:', err)
+    }
+  }
+
+  // 3. Otherwise, strictly follow the verified actual map route
   if (mapboxRoute) {
     return mapboxRoute
   }
 
-  if (campusRoute) {
-    return campusRoute
+  // Fallback: direct custom road graph if Mapbox failed completely
+  if (customRoads && customRoads.length > 0) {
+    const directCampus = computeCampusRoadRoute(origin, destination, mode, customRoads, 80)
+    if (directCampus) return directCampus
   }
 
   throw new Error('Could not compute directions between these campus locations. Please check points or network.')

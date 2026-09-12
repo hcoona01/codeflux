@@ -1,4 +1,4 @@
-import { ArrowLeft, User, LogOut, ShieldCheck } from 'lucide-react'
+import { Home, User, LogOut, ShieldCheck } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 
 interface NavigatorHeaderProps {
@@ -26,7 +26,7 @@ export default function NavigatorHeader({
             className="group flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs hover:border-orange-400 hover:bg-orange-100/70 hover:text-orange-950 transition cursor-pointer"
             title="Return to Home Showcase"
           >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5 text-orange-600" />
+            <Home className="h-3.5 w-3.5 transition-transform group-hover:scale-110 text-orange-600" />
             <span className="hidden xs:inline">Campus Showcase</span>
           </a>
 

@@ -4,7 +4,7 @@ import {
   PlusCircle,
   MapPin,
   MessageSquare,
-  ArrowLeft,
+  Home,
   Navigation as NavIcon,
   CheckCircle2,
   Camera,
@@ -275,7 +275,7 @@ export default function LostAndFoundHub({
               className="group flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs hover:border-orange-400 hover:bg-orange-100/70 hover:text-orange-950 transition cursor-pointer"
               title="Return to Campus Showcase"
             >
-              <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5 text-orange-600" />
+              <Home className="h-3.5 w-3.5 transition-transform group-hover:scale-110 text-orange-600" />
               <span className="hidden xs:inline">Campus Showcase</span>
             </button>
 

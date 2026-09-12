@@ -20,6 +20,7 @@ import {
   Edit3,
   Crosshair,
   MapPin,
+  RefreshCw,
   X,
   Volume2,
   VolumeX,
@@ -31,9 +32,11 @@ import {
   Pause,
   ChevronLeft,
   ChevronRight,
+  Calendar,
+  Sparkles,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
-import type { FeatureCollection, Feature } from 'geojson'
+import type { FeatureCollection } from 'geojson'
 
 import NavigatorHeader from './NavigatorHeader'
 import AuthModal from './AuthModal'
@@ -71,6 +74,8 @@ interface CampusNavigatorProps {
   initialCategory?: string
   initialLocationFocus?: { lng: number; lat: number; label?: string } | null
   onBackToLostFound?: () => void
+  initialEventFocus?: { lng: number; lat: number; title: string; venue: string } | null
+  onBackToEvents?: () => void
 }
 
 type TabType = 'explore' | 'directions' | 'contribute'
@@ -143,6 +148,8 @@ export default function CampusNavigator({
   initialCategory = 'all',
   initialLocationFocus = null,
   onBackToLostFound,
+  initialEventFocus = null,
+  onBackToEvents,
 }: CampusNavigatorProps) {
   const [pageVisible, setPageVisible] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
@@ -190,6 +197,116 @@ export default function CampusNavigator({
   const [originId, setOriginId] = useState<string>('gps')
   const [destinationId, setDestinationId] = useState<string>('')
   const [currentGps, setCurrentGps] = useState<[number, number] | null>(null)
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'acquiring' | 'ready' | 'denied' | 'error'>('acquiring')
+  const currentGpsRef = useRef<[number, number] | null>(null)
+  currentGpsRef.current = currentGps
+
+  const userGpsMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  const routeOriginMarkerRef = useRef<mapboxgl.Marker | null>(null)
+
+  // Dedicated helper to fetch the user's specific GPS location with high precision
+  const fetchSpecificGps = async (): Promise<[number, number]> => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsStatus('error')
+      throw new Error('Geolocation is not supported by your browser.')
+    }
+    setGpsStatus('acquiring')
+    return new Promise<[number, number]>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords: [number, number] = [pos.coords.longitude, pos.coords.latitude]
+          setCurrentGps(coords)
+          currentGpsRef.current = coords
+          setGpsAccuracy(pos.coords.accuracy)
+          setGpsStatus('ready')
+          resolve(coords)
+        },
+        (err) => {
+          if (err.code === err.PERMISSION_DENIED) {
+            setGpsStatus('denied')
+            reject(
+              new Error(
+                'Location permission was denied. Please allow location access in your browser to start navigation from your exact GPS.',
+              ),
+            )
+          } else {
+            setGpsStatus('error')
+            reject(
+              new Error(
+                'Unable to detect your specific GPS location. Please check device location settings.',
+              ),
+            )
+          }
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+      )
+    })
+  }
+
+  // Continuous real-time GPS acquisition so navigation always defaults to live GPS
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      fetchSpecificGps().catch((err) => {
+        console.warn('Initial specific GPS probe:', err.message)
+      })
+
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const gps: [number, number] = [pos.coords.longitude, pos.coords.latitude]
+          setCurrentGps(gps)
+          currentGpsRef.current = gps
+          setGpsAccuracy(pos.coords.accuracy)
+          setGpsStatus('ready')
+        },
+        (err) => {
+          console.warn('Live GPS watch notice:', err.message)
+          if (err.code === err.PERMISSION_DENIED) setGpsStatus('denied')
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 },
+      )
+
+      return () => {
+        navigator.geolocation.clearWatch(watchId)
+      }
+    }
+  }, [])
+
+  // Render or update User's Live GPS pin on Mapbox
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded || !currentGps) return
+
+    if (!userGpsMarkerRef.current) {
+      const el = document.createElement('div')
+      el.className = 'user-live-gps-pin cursor-pointer'
+      el.innerHTML = `
+        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 32px; height: 32px; border-radius: 50%; background: rgba(2, 132, 199, 0.35); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="position: relative; width: 18px; height: 18px; border-radius: 50%; background: #0284c7; border: 3px solid #ffffff; box-shadow: 0 3px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: 900;">
+            📍
+          </div>
+        </div>
+      `
+      const accText = gpsAccuracy ? ` (±${Math.round(gpsAccuracy)}m)` : ''
+      const popup = new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(`
+        <div style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #0369a1; text-align: center;">
+          📍 Your Current GPS Location
+          <div style="font-size: 9px; font-weight: 500; color: #64748b; margin-top: 2px;">
+            ${currentGps[1].toFixed(5)}°, ${currentGps[0].toFixed(5)}°${accText}
+          </div>
+        </div>
+      `)
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(currentGps)
+        .setPopup(popup)
+        .addTo(mapRef.current)
+
+      userGpsMarkerRef.current = marker
+    } else {
+      userGpsMarkerRef.current.setLngLat(currentGps)
+    }
+  }, [currentGps, gpsAccuracy, mapLoaded])
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
@@ -366,9 +483,9 @@ export default function CampusNavigator({
     }
 
     const el = document.createElement('div')
-    el.className = 'relative flex flex-col items-center cursor-pointer pointer-events-auto'
+    el.className = 'campus-meeting-marker relative flex flex-col items-center cursor-pointer pointer-events-auto group'
     el.innerHTML = `
-      <div style="background: linear-gradient(135deg, #f43f5e, #f97316); color: white; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 9999px; box-shadow: 0 4px 12px rgba(244,63,94,0.4); border: 2px solid white; white-space: nowrap; margin-bottom: 4px;">
+      <div class="campus-pin-tag" style="background: linear-gradient(135deg, #f43f5e, #f97316); color: white; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 9999px; box-shadow: 0 4px 12px rgba(244,63,94,0.4); border: 2px solid white; white-space: nowrap; margin-bottom: 4px;">
         📍 Handover: ${label || 'Meeting Point'}
       </div>
       <div style="width: 24px; height: 24px; border-radius: 50% 50% 50% 0; background: #f43f5e; transform: rotate(-45deg); border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
@@ -393,6 +510,84 @@ export default function CampusNavigator({
     }
   }, [initialLocationFocus, mapLoaded])
 
+  // Handle Event location focus from Campus Events Hub
+  const [eventFocusState, setEventFocusState] = useState<{ lng: number; lat: number; title: string; venue: string } | null>(initialEventFocus || null)
+  const eventMarkerRef = useRef<mapboxgl.Marker | null>(null)
+
+  useEffect(() => {
+    if (initialEventFocus) {
+      setEventFocusState(initialEventFocus)
+    }
+  }, [initialEventFocus])
+
+  useEffect(() => {
+    if (!eventFocusState || !mapRef.current || !mapLoaded) return
+
+    const { lng, lat, title, venue } = eventFocusState
+
+    const eventPlace: Place = {
+      id: 'event-focus-spot',
+      name: `🎉 ${title} (@ ${venue})`,
+      description: `Campus Event Venue: ${venue}`,
+      latitude: lat,
+      longitude: lng,
+      category: 'academic',
+    }
+
+    setPlaces((prev) => {
+      const filtered = prev.filter((p) => p.id !== 'event-focus-spot')
+      return [eventPlace, ...filtered]
+    })
+
+    setDestinationId('event-focus-spot')
+    setOriginId('gps')
+    setActiveTab('directions')
+    setMobileDrawerOpen(true)
+
+    mapRef.current.flyTo({
+      center: [lng, lat],
+      zoom: 17,
+      pitch: 45,
+      essential: true,
+      duration: 1200,
+    })
+
+    if (eventMarkerRef.current) {
+      eventMarkerRef.current.remove()
+      eventMarkerRef.current = null
+    }
+
+    const el = document.createElement('div')
+    el.className = 'campus-event-marker relative flex flex-col items-center cursor-pointer pointer-events-auto group'
+    el.innerHTML = `
+      <div class="campus-pin-tag" style="background: linear-gradient(135deg, #ea580c, #f97316); color: white; font-weight: 800; font-size: 11px; padding: 4px 10px; border-radius: 9999px; box-shadow: 0 4px 14px rgba(234,88,12,0.4); border: 2px solid white; white-space: nowrap; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+        <span>🎉 Event:</span> <span>${title}</span>
+      </div>
+      <div style="width: 26px; height: 26px; border-radius: 50% 50% 50% 0; background: #ea580c; transform: rotate(-45deg); border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: white;"></div>
+      </div>
+    `
+
+    const marker = new mapboxgl.Marker({
+      element: el,
+      anchor: 'bottom',
+    })
+      .setLngLat([lng, lat])
+      .addTo(mapRef.current)
+
+    eventMarkerRef.current = marker
+
+    // Automatically calculate route from user's GPS/entrance to event coordinates
+    handleCalculateRoute('event-focus-spot', 'gps', [lng, lat], eventPlace)
+
+    return () => {
+      if (eventMarkerRef.current) {
+        eventMarkerRef.current.remove()
+        eventMarkerRef.current = null
+      }
+    }
+  }, [eventFocusState, mapLoaded])
+
   // Re-render custom roads whenever roads data changes from any user
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return
@@ -415,6 +610,42 @@ export default function CampusNavigator({
 
     mapRef.current = map
 
+    // Zoom-reactive tag scaling and text fading
+    const updatePinZoomStyles = () => {
+      if (!map) return
+      const z = map.getZoom()
+      const container = map.getContainer()
+      if (!container) return
+
+      // Tag opacity: 1.0 at zoom >= 15.8, smoothly fading to 0 by zoom 14.2
+      const rawTagOpacity = (z - 14.2) / (15.8 - 14.2)
+      const tagOpacity = Math.max(0, Math.min(1, rawTagOpacity))
+
+      // Tag text opacity: fades slightly earlier so text softens cleanly as map zooms out
+      const rawTextOpacity = (z - 14.6) / (15.8 - 14.6)
+      const textOpacity = Math.max(0, Math.min(1, rawTextOpacity))
+
+      // Tag scale: 1.0 at zoom >= 16.2, scaling down to 0.55 at zoom 14.0
+      const rawTagScale = 0.55 + 0.45 * ((z - 14.0) / (16.2 - 14.0))
+      const tagScale = Math.max(0.52, Math.min(1.05, rawTagScale))
+
+      // Pin marker scale: 1.0 at zoom >= 16.0, scaling down to 0.58 at zoom 13.0
+      const rawPinScale = 0.58 + 0.42 * ((z - 13.0) / (16.0 - 13.0))
+      const pinScale = Math.max(0.55, Math.min(1.05, rawPinScale))
+
+      const visibility = tagOpacity <= 0.02 ? 'hidden' : 'visible'
+
+      container.style.setProperty('--pin-tag-opacity', tagOpacity.toFixed(3))
+      container.style.setProperty('--pin-tag-text-opacity', textOpacity.toFixed(3))
+      container.style.setProperty('--pin-tag-scale', tagScale.toFixed(3))
+      container.style.setProperty('--pin-tag-visibility', visibility)
+      container.style.setProperty('--pin-scale', pinScale.toFixed(3))
+    }
+
+    map.on('zoom', updatePinZoomStyles)
+    map.on('load', updatePinZoomStyles)
+    updatePinZoomStyles()
+
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right')
 
     const geolocate = new mapboxgl.GeolocateControl({
@@ -426,7 +657,9 @@ export default function CampusNavigator({
 
     geolocate.on('geolocate', (e: any) => {
       const { longitude, latitude } = e.coords
-      setCurrentGps([longitude, latitude])
+      const coords: [number, number] = [longitude, latitude]
+      setCurrentGps(coords)
+      currentGpsRef.current = coords
       const state = mapInteractionRef.current
       if (state.isPickingLocation && state.editingPlace) {
         setEditPlaceLng(longitude.toFixed(6))
@@ -455,6 +688,12 @@ export default function CampusNavigator({
       setup3dTerrain(map)
       setup3dBuildings(map, false)
       setupRoadsSourceAndLayer(map, roads)
+      try {
+        // Automatically trigger live GPS lock on campus load
+        geolocate.trigger()
+      } catch (e) {
+        // Fallback gracefully if browser requires interaction
+      }
     })
 
     map.on('click', (e) => {
@@ -656,7 +895,7 @@ export default function CampusNavigator({
           'line-cap': 'round',
         },
         paint: {
-          'line-color': '#955507ff',
+          'line-color': '#955507',
           'line-width': 4,
           'line-opacity': 0.2,
         },
@@ -693,7 +932,6 @@ export default function CampusNavigator({
       tag.style.borderRadius = '8px'
       tag.style.backgroundColor = 'rgba(15, 23, 42, 0.92)'
       tag.style.backdropFilter = 'blur(4px)'
-      tag.style.color = '#ffffff'
       tag.style.fontSize = '11px'
       tag.style.fontWeight = '700'
       tag.style.whiteSpace = 'nowrap'
@@ -701,7 +939,6 @@ export default function CampusNavigator({
       tag.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)'
       tag.style.border = '1px solid rgba(255,255,255,0.18)'
       tag.style.marginBottom = '2px'
-      tag.style.transition = 'transform 0.18s ease, background-color 0.18s ease'
 
       // 2. Pin Pinpoint Body (Circular Head + Sharp Needle Tip pointing directly to the ground coordinate)
       const pinWrapper = document.createElement('div')
@@ -710,7 +947,6 @@ export default function CampusNavigator({
       pinWrapper.style.display = 'flex'
       pinWrapper.style.flexDirection = 'column'
       pinWrapper.style.alignItems = 'center'
-      pinWrapper.style.transition = 'transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)'
 
       // 2a. Pin Head Circle
       const pinHead = document.createElement('div')
@@ -747,18 +983,6 @@ export default function CampusNavigator({
       el.appendChild(tag)
       el.appendChild(pinWrapper)
 
-      // Hover scaling applied exclusively to pin wrapper without shifting anchor point
-      el.addEventListener('mouseenter', () => {
-        pinWrapper.style.transform = 'scale(1.2) translateY(-2px)'
-        tag.style.transform = 'scale(1.06)'
-        tag.style.backgroundColor = 'rgba(15, 23, 42, 0.98)'
-      })
-      el.addEventListener('mouseleave', () => {
-        pinWrapper.style.transform = 'scale(1) translateY(0)'
-        tag.style.transform = 'scale(1)'
-        tag.style.backgroundColor = 'rgba(15, 23, 42, 0.92)'
-      })
-
       // Popup
       const popupHtml = `
         <div style="font-family: Inter, sans-serif; padding: 4px; max-width: 230px;">
@@ -791,9 +1015,11 @@ export default function CampusNavigator({
         if (routeBtn) {
           routeBtn.addEventListener('click', () => {
             setDestinationId(place.id)
+            setOriginId('gps')
             setActiveTab('directions')
             setMobileDrawerOpen(true)
             popup.remove()
+            handleCalculateRoute(place.id, 'gps')
           })
         }
         const editBtn = document.getElementById(`pin-edit-btn-${place.id}`)
@@ -1179,31 +1405,49 @@ export default function CampusNavigator({
   }
 
   // Handle Calculate Route
-  const handleCalculateRoute = async (overrideDestId?: string, overrideOriginId?: string) => {
+  const handleCalculateRoute = async (
+    overrideDestId?: string,
+    overrideOriginId?: string,
+    overrideDestCoords?: [number, number],
+    overrideDestPlace?: Place,
+  ) => {
     setRouteError(null)
     setRouteResult(null)
 
-    const effectiveOriginId = overrideOriginId || originId
+    // Strictly default navigation to start from current live GPS location every time unless an explicit place origin was intentionally passed
+    const effectiveOriginId = overrideOriginId !== undefined ? overrideOriginId : (originId || 'gps')
+    if (effectiveOriginId === 'gps') {
+      setOriginId('gps')
+    }
+
     let originCoords: [number, number] | null = null
     if (effectiveOriginId === 'gps') {
-      if (currentGps) {
-        originCoords = currentGps
-      } else {
-        setRouteError('Current GPS location not available yet. Please select an origin place or allow location access.')
-        return
+      let activeGps = currentGpsRef.current || currentGps
+      if (!activeGps) {
+        setRouteLoading(true)
+        try {
+          activeGps = await fetchSpecificGps()
+        } catch (err: any) {
+          setRouteError(err.message || 'Could not detect your specific GPS location. Please allow location permissions in your browser.')
+          setRouteLoading(false)
+          return
+        }
       }
+      originCoords = activeGps
     } else {
       const orig = places.find((p) => p.id === effectiveOriginId)
       if (orig) originCoords = [orig.longitude, orig.latitude]
     }
 
     const effectiveDestId = overrideDestId || destinationId
-    const dest = places.find((p) => p.id === effectiveDestId)
-    if (!dest) {
+    const dest = overrideDestPlace || places.find((p) => p.id === effectiveDestId)
+    const destCoords: [number, number] | null =
+      overrideDestCoords || (dest ? [dest.longitude, dest.latitude] : null)
+
+    if (!dest || !destCoords) {
       setRouteError('Please select a valid campus destination.')
       return
     }
-    const destCoords: [number, number] = [dest.longitude, dest.latitude]
 
     if (!originCoords) {
       setRouteError('Please select a valid origin point.')
@@ -1214,7 +1458,7 @@ export default function CampusNavigator({
     try {
       const result = await fetchMapboxRoute(originCoords, destCoords, travelMode, roads)
       setRouteResult(result)
-      renderRouteOnMap(result.geometry, originCoords, destCoords)
+      renderRouteOnMap(result.geometry, originCoords, destCoords, effectiveOriginId === 'gps')
 
       // Accurately speak directions when navigation starts
       if (voiceAssistanceEnabled) {
@@ -1232,49 +1476,77 @@ export default function CampusNavigator({
     geometry: any,
     origin: [number, number],
     destination: [number, number],
+    isFromGps: boolean = true,
   ) => {
     if (!mapRef.current) return
     const map = mapRef.current
 
-    const routeData: Feature = {
-      type: 'Feature',
-      properties: {},
-      geometry,
+    // Remove existing route layers and source if present
+    if (map.getLayer('navigation-route-core')) map.removeLayer('navigation-route-core')
+    if (map.getLayer('navigation-route-glow')) map.removeLayer('navigation-route-glow')
+    if (map.getSource('navigation-route')) map.removeSource('navigation-route')
+
+    // Add source
+    map.addSource('navigation-route', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: {},
+        geometry,
+      },
+    })
+
+    // Outer glow layer
+    map.addLayer({
+      id: 'navigation-route-glow',
+      type: 'line',
+      source: 'navigation-route',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#ea580c',
+        'line-width': 10,
+        'line-opacity': 0.35,
+        'line-blur': 4,
+      },
+    })
+
+    // Core sharp line layer
+    map.addLayer({
+      id: 'navigation-route-core',
+      type: 'line',
+      source: 'navigation-route',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#f97316',
+        'line-width': 5,
+        'line-opacity': 0.95,
+      },
+    })
+
+    // Place or update an Origin Marker pin at start
+    if (routeOriginMarkerRef.current) {
+      routeOriginMarkerRef.current.remove()
+      routeOriginMarkerRef.current = null
     }
 
-    if (map.getSource('navigation-route')) {
-      ; (map.getSource('navigation-route') as mapboxgl.GeoJSONSource).setData(routeData)
-    } else {
-      map.addSource('navigation-route', {
-        type: 'geojson',
-        data: routeData,
-      })
-
-      // Outer glow line
-      map.addLayer({
-        id: 'navigation-route-glow',
-        type: 'line',
-        source: 'navigation-route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#f97316',
-          'line-width': 9,
-          'line-opacity': 0.2,
-        },
-      })
-
-      // Core route line
-      map.addLayer({
-        id: 'navigation-route-core',
-        type: 'line',
-        source: 'navigation-route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#ea580c',
-          'line-width': 5,
-        },
-      })
-    }
+    const startEl = document.createElement('div')
+    startEl.className = 'route-start-pin cursor-pointer group'
+    startEl.innerHTML = `
+      <div class="campus-pin-tag" style="background: #059669; color: white; font-weight: 800; font-size: 10px; padding: 3px 8px; border-radius: 9999px; box-shadow: 0 2px 8px rgba(5,150,105,0.4); border: 1.5px solid white; white-space: nowrap; margin-bottom: 3px; display: flex; align-items: center; gap: 4px;">
+        <span>${isFromGps ? '📍 Start (Your GPS)' : '📍 Start Origin'}</span>
+      </div>
+      <div style="width: 14px; height: 14px; border-radius: 50%; background: #059669; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3); margin: 0 auto;"></div>
+    `
+    const startMarker = new mapboxgl.Marker({ element: startEl, anchor: 'bottom' })
+      .setLngLat(origin)
+      .addTo(map)
+    routeOriginMarkerRef.current = startMarker
 
     // Fit map bounds to show full route
     const bounds = new mapboxgl.LngLatBounds()
@@ -1292,6 +1564,11 @@ export default function CampusNavigator({
     stopLiveNavigation()
     setRouteResult(null)
     setRouteError(null)
+    setOriginId('gps')
+    if (routeOriginMarkerRef.current) {
+      routeOriginMarkerRef.current.remove()
+      routeOriginMarkerRef.current = null
+    }
     if (mapRef.current) {
       if (mapRef.current.getLayer('navigation-route-core')) {
         mapRef.current.removeLayer('navigation-route-core')
@@ -1721,7 +1998,9 @@ export default function CampusNavigator({
                           onClick={(e) => {
                             e.stopPropagation()
                             setDestinationId(place.id)
+                            setOriginId('gps')
                             setActiveTab('directions')
+                            handleCalculateRoute(place.id, 'gps')
                           }}
                           className="flex items-center gap-1 font-bold text-orange-600 hover:text-orange-700 transition cursor-pointer"
                         >
@@ -1761,7 +2040,7 @@ export default function CampusNavigator({
                     }`}
                 >
                   <Bike className="h-3.5 w-3.5" />
-                  <span>Cycling</span>
+                  <span>E-Rickshaw / Bike</span>
                 </button>
               </div>
 
@@ -1771,21 +2050,69 @@ export default function CampusNavigator({
                 <div className="flex items-center gap-2 mb-2">
                   <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
                   <div className="flex-1">
-                    <label className="block text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-0.5">
-                      Starting Point
-                    </label>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 tracking-wider">
+                        Starting Point
+                      </label>
+                      {originId === 'gps' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fetchSpecificGps()
+                              .then((coords) => {
+                                if (mapRef.current) {
+                                  mapRef.current.flyTo({ center: coords, zoom: 17, duration: 1000 })
+                                }
+                                if (destinationId) {
+                                  handleCalculateRoute(destinationId, 'gps')
+                                }
+                              })
+                              .catch(() => {})
+                          }}
+                          className="text-[10px] font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer transition active:scale-95"
+                          title="Refresh your exact GPS coordinates"
+                        >
+                          <RefreshCw className={`h-2.5 w-2.5 ${gpsStatus === 'acquiring' ? 'animate-spin' : ''}`} />
+                          <span>Refresh GPS</span>
+                        </button>
+                      )}
+                    </div>
                     <select
                       value={originId}
                       onChange={(e) => setOriginId(e.target.value)}
                       className="w-full rounded-lg border border-orange-200/80 bg-[#fffcf9] py-1.5 px-2 text-xs font-semibold text-slate-800 focus:border-orange-500 focus:outline-none"
                     >
-                      <option value="gps">📍 My Current Location (GPS)</option>
+                      <option value="gps">
+                        📍 My Specific GPS Location {currentGps ? `(${currentGps[1].toFixed(4)}°, ${currentGps[0].toFixed(4)}°)` : '• Detecting...'}
+                      </option>
                       {places.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                         </option>
                       ))}
                     </select>
+
+                    {originId === 'gps' && (
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] px-1 text-slate-500">
+                        {currentGps ? (
+                          <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                            <span className="truncate">
+                              Live GPS: {currentGps[1].toFixed(5)}° N, {currentGps[0].toFixed(5)}° E {gpsAccuracy ? `(±${Math.round(gpsAccuracy)}m)` : ''}
+                            </span>
+                          </div>
+                        ) : gpsStatus === 'acquiring' ? (
+                          <div className="flex items-center gap-1.5 text-amber-600 font-semibold">
+                            <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                            <span>Detecting your exact GPS coordinates...</span>
+                          </div>
+                        ) : gpsStatus === 'denied' ? (
+                          <div className="flex items-center gap-1 text-rose-600 font-semibold">
+                            <span>⚠️ Location access blocked. Allow GPS in browser.</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1813,6 +2140,11 @@ export default function CampusNavigator({
                       onChange={(e) => setDestinationId(e.target.value)}
                       className="w-full rounded-lg border border-orange-200/80 bg-[#fffcf9] py-1.5 px-2 text-xs font-semibold text-slate-800 focus:border-orange-500 focus:outline-none"
                     >
+                      {eventFocusState && destinationId === 'event-focus-spot' && (
+                        <option value="event-focus-spot">
+                          🎉 {eventFocusState.title} (@ {eventFocusState.venue})
+                        </option>
+                      )}
                       {places.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -2830,6 +3162,79 @@ export default function CampusNavigator({
             </div>
           )}
 
+          {/* Active Event Navigation Session Banner */}
+          {eventFocusState && (
+            <div className="absolute top-4 right-4 z-20 max-w-md bg-[#fffdfb]/95 backdrop-blur-md border border-orange-300 rounded-2xl p-3 shadow-2xl flex items-center justify-between gap-3 text-slate-900 animate-in slide-in-from-top duration-300">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-9 w-9 rounded-xl bg-orange-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-orange-600">
+                    <Sparkles className="h-3 w-3 text-orange-500" />
+                    <span>Event Destination Target</span>
+                  </div>
+                  <p className="text-xs font-extrabold text-slate-900 truncate">
+                    {eventFocusState.title}
+                  </p>
+                  <p className="text-[10px] text-slate-600 truncate">
+                    📍 {eventFocusState.venue}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!isNavigatingLive && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (routeResult && routeResult.steps && routeResult.steps.length > 0) {
+                        startLiveNavigation()
+                      } else {
+                        await handleCalculateRoute(
+                          'event-focus-spot',
+                          'gps',
+                          [eventFocusState.lng, eventFocusState.lat],
+                        )
+                        startLiveNavigation()
+                      }
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-[11px] font-bold text-white shadow-xs transition cursor-pointer"
+                  >
+                    <NavIcon className="h-3 w-3" />
+                    <span>Start Nav</span>
+                  </button>
+                )}
+
+                {onBackToEvents && (
+                  <button
+                    type="button"
+                    onClick={onBackToEvents}
+                    className="px-2.5 py-1.5 rounded-xl bg-[#fff5ec] hover:bg-orange-100 border border-orange-200 text-[11px] font-bold text-orange-800 transition cursor-pointer"
+                  >
+                    Events
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEventFocusState(null)
+                    if (eventMarkerRef.current) {
+                      eventMarkerRef.current.remove()
+                      eventMarkerRef.current = null
+                    }
+                    handleClearRoute()
+                  }}
+                  className="p-1 rounded-full text-slate-400 hover:bg-orange-100 hover:text-slate-700 transition cursor-pointer"
+                  title="Clear Event Session"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Active Repositioning Non-blocking Floating Dock */}
           {editingPlace && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 max-w-[92vw] sm:max-w-md w-full pointer-events-auto">
@@ -2925,8 +3330,9 @@ export default function CampusNavigator({
             }}
             onQuickNavigate={(destId) => {
               setDestinationId(destId)
+              setOriginId('gps')
               setActiveTab('directions')
-              handleCalculateRoute(destId)
+              handleCalculateRoute(destId, 'gps')
             }}
           />
         </div>
