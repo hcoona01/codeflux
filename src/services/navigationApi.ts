@@ -55,35 +55,117 @@ export interface RouteResult {
 const LOCAL_STORAGE_PLACES_KEY = 'verto_omniroute_places_v2'
 const LOCAL_STORAGE_ROADS_KEY = 'verto_omniroute_roads_v2'
 
-// Dedicated global shared cloud stores (CORS-enabled, zero-config, universal sync)
-const SHARED_CLOUD_PLACES_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a093123fb07d7f'
-const SHARED_CLOUD_ROADS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a093123f9c7d7e'
+// Dedicated global shared cloud store (CORS-enabled, zero-config, universal sync across all devices)
+const GIST_ID = 'b15fc0478f45ef8039dbb5bd99726579'
+const GIST_TOKEN = import.meta.env.VITE_SYNC_TOKEN || ''
+const GIST_API_URL = `https://api.github.com/gists/${GIST_ID}`
+const GIST_RAW_PLACES = `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/places.json`
+const GIST_RAW_ROADS = `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/roads.json`
+
+let cachedGistData: { places: Place[]; roads: Road[]; timestamp: number } | null = null
+
+async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[]; roads: Road[] }> {
+  const now = Date.now()
+  if (!forceFresh && cachedGistData && now - cachedGistData.timestamp < 3000) {
+    return { places: cachedGistData.places, roads: cachedGistData.roads }
+  }
+
+  // 1. Try Gist REST API (real-time un-cached data, 5000 req/hr if token present, 60 req/hr public)
+  try {
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+    }
+    if (GIST_TOKEN) {
+      headers.Authorization = `token ${GIST_TOKEN}`
+    }
+    const res = await fetch(`${GIST_API_URL}?_t=${now}`, {
+      headers,
+      signal: AbortSignal.timeout(5000),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      let places: Place[] = []
+      let roads: Road[] = []
+      if (data.files?.['places.json']?.content) {
+        try {
+          const parsed = JSON.parse(data.files['places.json'].content)
+          if (Array.isArray(parsed)) places = parsed
+        } catch {
+          // ignore
+        }
+      }
+      if (data.files?.['roads.json']?.content) {
+        try {
+          const parsed = JSON.parse(data.files['roads.json'].content)
+          if (Array.isArray(parsed)) roads = parsed
+        } catch {
+          // ignore
+        }
+      }
+      cachedGistData = { places, roads, timestamp: now }
+      return { places, roads }
+    }
+  } catch (err) {
+    console.warn('[OmniRoute] Gist API fetch fallback:', err)
+  }
+
+  // 2. Fallback to Raw Gist URLs
+  try {
+    const [pRes, rRes] = await Promise.allSettled([
+      fetch(`${GIST_RAW_PLACES}?_t=${now}`, { signal: AbortSignal.timeout(4000) }),
+      fetch(`${GIST_RAW_ROADS}?_t=${now}`, { signal: AbortSignal.timeout(4000) }),
+    ])
+    let places: Place[] = []
+    let roads: Road[] = []
+    if (pRes.status === 'fulfilled' && pRes.value.ok) {
+      const p = await pRes.value.json()
+      if (Array.isArray(p)) places = p
+    }
+    if (rRes.status === 'fulfilled' && rRes.value.ok) {
+      const r = await rRes.value.json()
+      if (Array.isArray(r)) roads = r
+    }
+    if (places.length > 0 || roads.length > 0) {
+      cachedGistData = { places, roads, timestamp: now }
+      return { places, roads }
+    }
+  } catch (err) {
+    console.warn('[OmniRoute] Gist raw fallback:', err)
+  }
+
+  return cachedGistData ? { places: cachedGistData.places, roads: cachedGistData.roads } : { places: [], roads: [] }
+}
 
 async function fetchCloudPlaces(): Promise<Place[]> {
   try {
-    const res = await fetch(SHARED_CLOUD_PLACES_URL, { signal: AbortSignal.timeout(4500) })
-    if (res.ok) {
-      const data = await res.json()
-      if (data && Array.isArray(data.data?.places)) {
-        return data.data.places as Place[]
-      }
-    }
+    const data = await fetchGistSnapshot()
+    return data.places
   } catch (err) {
     console.warn('[OmniRoute] Cloud places sync error:', err)
+    return []
   }
-  return []
 }
 
 async function syncCloudPlaces(places: Place[]): Promise<void> {
+  if (cachedGistData) {
+    cachedGistData.places = places
+    cachedGistData.timestamp = Date.now()
+  }
+  if (!GIST_TOKEN) return
   try {
-    await fetch(SHARED_CLOUD_PLACES_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    await fetch(GIST_API_URL, {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `token ${GIST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        name: 'lpu-omniroute-places-v1',
-        data: { places },
+        files: {
+          'places.json': { content: JSON.stringify(places, null, 2) },
+        },
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(6000),
     })
   } catch (err) {
     console.warn('[OmniRoute] Cloud places push error:', err)
@@ -92,29 +174,34 @@ async function syncCloudPlaces(places: Place[]): Promise<void> {
 
 async function fetchCloudRoads(): Promise<Road[]> {
   try {
-    const res = await fetch(SHARED_CLOUD_ROADS_URL, { signal: AbortSignal.timeout(4500) })
-    if (res.ok) {
-      const data = await res.json()
-      if (data && Array.isArray(data.data?.roads)) {
-        return data.data.roads as Road[]
-      }
-    }
+    const data = await fetchGistSnapshot()
+    return data.roads
   } catch (err) {
     console.warn('[OmniRoute] Cloud roads sync error:', err)
+    return []
   }
-  return []
 }
 
 async function syncCloudRoads(roads: Road[]): Promise<void> {
+  if (cachedGistData) {
+    cachedGistData.roads = roads
+    cachedGistData.timestamp = Date.now()
+  }
+  if (!GIST_TOKEN) return
   try {
-    await fetch(SHARED_CLOUD_ROADS_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    await fetch(GIST_API_URL, {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `token ${GIST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        name: 'lpu-omniroute-roads-v1',
-        data: { roads },
+        files: {
+          'roads.json': { content: JSON.stringify(roads, null, 2) },
+        },
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(6000),
     })
   } catch (err) {
     console.warn('[OmniRoute] Cloud roads push error:', err)
@@ -128,8 +215,6 @@ export function clearAllCampusData(): void {
   } catch {
     // ignore
   }
-  syncCloudPlaces([]).catch(() => {})
-  syncCloudRoads([]).catch(() => {})
 }
 
 /**
@@ -137,14 +222,7 @@ export function clearAllCampusData(): void {
  * Guaranteed to return synchronized locations for ALL users across ALL devices.
  */
 export async function fetchPlaces(): Promise<Place[]> {
-  // 1. Primary: Shared Cloud Database (accessible on all devices/browsers)
-  const cloudData = await fetchCloudPlaces()
-  if (cloudData.length > 0) {
-    localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudData))
-    return cloudData
-  }
-
-  // 2. Secondary: Cloud Firestore if live
+  // 1. Primary: Cloud Firestore if live
   if (db) {
     try {
       const snap = await getDocs(collection(db, 'campus_places'))
@@ -160,6 +238,13 @@ export async function fetchPlaces(): Promise<Place[]> {
     } catch (err) {
       console.warn('[OmniRoute] Firestore places fetch fallback:', err)
     }
+  }
+
+  // 2. Secondary: Shared Cloud Database (accessible on all devices/browsers)
+  const cloudData = await fetchCloudPlaces()
+  if (cloudData.length > 0) {
+    localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudData))
+    return cloudData
   }
 
   // 3. Fallback: local storage cache
@@ -203,7 +288,7 @@ export function subscribeToPlaces(callback: (places: Place[]) => void): () => vo
     }
   }
 
-  const timer = setInterval(checkCloud, 3500)
+  const timer = setInterval(checkCloud, 20000)
 
   // Re-sync immediately when tab is focused
   const onFocus = () => {
@@ -383,12 +468,7 @@ export function resetPlaceToDefault(placeId: string): Place | null {
  * Fetch all pathways from shared Cloud Storage + Firestore.
  */
 export async function fetchRoads(): Promise<Road[]> {
-  const cloudData = await fetchCloudRoads()
-  if (cloudData.length > 0) {
-    localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudData))
-    return cloudData
-  }
-
+  // 1. Primary: Cloud Firestore if live
   if (db) {
     try {
       const snap = await getDocs(collection(db, 'campus_roads'))
@@ -404,6 +484,13 @@ export async function fetchRoads(): Promise<Road[]> {
     } catch (err) {
       console.warn('[OmniRoute] Firestore roads fetch fallback:', err)
     }
+  }
+
+  // 2. Secondary: Shared Cloud Database
+  const cloudData = await fetchCloudRoads()
+  if (cloudData.length > 0) {
+    localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudData))
+    return cloudData
   }
 
   const cached = localStorage.getItem(LOCAL_STORAGE_ROADS_KEY)
@@ -445,7 +532,7 @@ export function subscribeToRoads(callback: (roads: Road[]) => void): () => void 
     }
   }
 
-  const timer = setInterval(checkCloud, 4000)
+  const timer = setInterval(checkCloud, 25000)
 
   const onFocus = () => {
     checkCloud()

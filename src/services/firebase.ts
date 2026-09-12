@@ -10,13 +10,13 @@ import {
 import { getFirestore, type Firestore } from 'firebase/firestore'
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || '',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCbVD4VJU3Ut6RRDuMw6rkXpdH8or1wBOc',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'vertos-omniroute.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'vertos-omniroute',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'vertos-omniroute.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '489464686555',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:489464686555:web:35118029e2953fea0c29fe',
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-2NFVJVYE05',
 }
 
 // Initialize Firebase client instance
