@@ -8,7 +8,6 @@ import {
   Navigation as NavIcon,
   Layers,
   ArrowUpDown,
-  Car,
   Bike,
   Footprints,
   RotateCcw,
@@ -1245,7 +1244,7 @@ export default function CampusNavigator({
           {activeTab === 'directions' && (
             <div className="flex flex-1 flex-col overflow-y-auto p-3 sm:p-4">
               {/* Travel Mode Chips */}
-              <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-[#fff3e8] border border-orange-200/50 p-1 mb-3">
+              <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#fff3e8] border border-orange-200/50 p-1 mb-3">
                 <button
                   type="button"
                   onClick={() => setTravelMode('walking')}
@@ -1269,18 +1268,6 @@ export default function CampusNavigator({
                 >
                   <Bike className="h-3.5 w-3.5" />
                   <span>Cycling</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTravelMode('driving')}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                    travelMode === 'driving'
-                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Car className="h-3.5 w-3.5" />
-                  <span>Driving</span>
                 </button>
               </div>
 
