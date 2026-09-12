@@ -1,4 +1,4 @@
-import { ArrowLeft, User, LogOut, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowLeft, User, LogOut, ShieldCheck } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 
 interface NavigatorHeaderProps {
@@ -6,7 +6,6 @@ interface NavigatorHeaderProps {
   onOpenAuth: () => void
   onSignOut: () => void
   onGoHome: (e: React.MouseEvent) => void
-  onClearData?: () => void
   activeSubView?: string
 }
 
@@ -15,7 +14,6 @@ export default function NavigatorHeader({
   onOpenAuth,
   onSignOut,
   onGoHome,
-  onClearData,
 }: NavigatorHeaderProps) {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-orange-200/50 bg-[#fff9f4]/95 backdrop-blur-md shadow-xs">
@@ -60,18 +58,8 @@ export default function NavigatorHeader({
           </div>
         </div>
 
-        {/* Right Side: Authentication & Data Action Section (Pinned to Right Corner) */}
+        {/* Right Side: Authentication & Profile Section (Pinned to Right Corner) */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {onClearData && (
-            <button
-              onClick={onClearData}
-              className="flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-red-300 hover:bg-red-50 hover:text-red-600 transition cursor-pointer shadow-xs"
-              title="Clear all saved campus locations and custom pathways"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span className="hidden md:inline">Clear All Data</span>
-            </button>
-          )}
 
           {currentUser ? (
             <div className="flex items-center gap-2">

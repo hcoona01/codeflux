@@ -37,7 +37,6 @@ import {
   savePlace,
   updatePlace,
   getOriginalPlace,
-  clearAllCampusData,
   fetchRoads,
   subscribeToRoads,
   saveRoad,
@@ -987,21 +986,6 @@ export default function CampusNavigator({
     }
   }
 
-  // Clear all saved data from browser
-  const handleClearAllData = () => {
-    if (window.confirm('Clear all saved campus landmarks and custom pathways from your browser?')) {
-      clearAllCampusData()
-      setPlaces([])
-      setRoads([])
-      setSelectedPlace(null)
-      setDestinationId('')
-      setRouteResult(null)
-      handleCloseEditPlace()
-      if (mapRef.current) {
-        setupRoadsSourceAndLayer(mapRef.current, [])
-      }
-    }
-  }
 
   // Close place editing modal/mode
   const handleCloseEditPlace = () => {
@@ -1124,7 +1108,6 @@ export default function CampusNavigator({
           await logoutUser()
         }}
         onGoHome={handleGoHome}
-        onClearData={handleClearAllData}
       />
 
       {/* Main Workspace: Sidebar & Map */}
