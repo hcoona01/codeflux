@@ -4,17 +4,28 @@ import CampusNavigator from './components/CampusNavigator'
 
 function App() {
   const [currentView, setCurrentView] = useState<'hero' | 'navigator'>(() => {
-    return typeof window !== 'undefined' && window.location.hash === '#navigation'
+    return typeof window !== 'undefined' && window.location.hash.startsWith('#navigation')
       ? 'navigator'
       : 'hero'
+  })
+  const [initialCategory, setInitialCategory] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash
+      if (hash.includes('student_spot') || hash.includes('spots')) return 'student_spot'
+    }
+    return 'all'
   })
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   useEffect(() => {
     const handleHashChange = () => {
-      if (window.location.hash === '#navigation') {
+      const hash = window.location.hash
+      if (hash.startsWith('#navigation')) {
+        if (hash.includes('student_spot') || hash.includes('spots')) {
+          setInitialCategory('student_spot')
+        }
         setCurrentView('navigator')
-      } else if (window.location.hash === '#hero' || !window.location.hash) {
+      } else if (hash === '#hero' || !hash) {
         setCurrentView('hero')
       }
     }
@@ -22,11 +33,17 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
 
-  const handleOpenNavigator = () => {
+  const handleOpenNavigator = (category?: string) => {
+    if (category) {
+      setInitialCategory(category)
+      window.location.hash = `#navigation?category=${category}`
+    } else {
+      setInitialCategory('all')
+      window.location.hash = '#navigation'
+    }
     setIsTransitioning(true)
     setTimeout(() => {
       setCurrentView('navigator')
-      window.location.hash = '#navigation'
       setIsTransitioning(false)
     }, 250)
   }
@@ -36,6 +53,7 @@ function App() {
     setTimeout(() => {
       setCurrentView('hero')
       window.location.hash = ''
+      setInitialCategory('all')
       setIsTransitioning(false)
     }, 250)
   }
@@ -50,7 +68,10 @@ function App() {
         {currentView === 'hero' ? (
           <CampusHero onOpenNavigator={handleOpenNavigator} />
         ) : (
-          <CampusNavigator onBackToHome={handleBackToHome} />
+          <CampusNavigator
+            onBackToHome={handleBackToHome}
+            initialCategory={initialCategory}
+          />
         )}
       </div>
     </div>

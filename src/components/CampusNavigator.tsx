@@ -52,6 +52,7 @@ mapboxgl.accessToken = MAPBOX_PUBLIC_TOKEN
 
 interface CampusNavigatorProps {
   onBackToHome: () => void
+  initialCategory?: string
 }
 
 type TabType = 'explore' | 'directions' | 'contribute'
@@ -77,7 +78,10 @@ const CATEGORY_ICONS: Record<string, string> = {
   hospital: '🏥',
 }
 
-export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) {
+export default function CampusNavigator({
+  onBackToHome,
+  initialCategory = 'all',
+}: CampusNavigatorProps) {
   const [pageVisible, setPageVisible] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
 
@@ -100,7 +104,22 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
   // Tabs state
   const [activeTab, setActiveTab] = useState<TabType>('explore')
   const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [categoryFilter, setCategoryFilter] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash
+      if (hash.includes('student_spot') || hash.includes('spots')) {
+        return 'student_spot'
+      }
+    }
+    return initialCategory || 'all'
+  })
+
+  useEffect(() => {
+    if (initialCategory && initialCategory !== 'all') {
+      setCategoryFilter(initialCategory)
+      setActiveTab('explore')
+    }
+  }, [initialCategory])
 
   // Directions state
   const [travelMode, setTravelMode] = useState<TravelMode>('walking')

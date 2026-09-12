@@ -49,12 +49,12 @@ const SLIDES = [
     src: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/4.4457fbce.png',
     bg: '#6EB5FF',
     panel: '#8DC4FF',
-    tab: 'Spaces',
-    ghost: 'SPACES',
-    title: 'AVAILABLE SPACES',
-    copy: 'Need a quiet classroom, a lab slot, or a place to sit between lectures? See which rooms and spots are free right now.',
-    cta: 'FIND A SPOT',
-    href: '#available-spaces',
+    tab: 'Spots',
+    ghost: 'SPOTS',
+    title: 'STUDENT SPOTS',
+    copy: 'Need a quiet spot, a cafe, or a place to sit between lectures? See all verified student plazas, study zones, and hangout spots on campus.',
+    cta: 'EXPLORE SPOTS',
+    href: '#navigation?category=student_spot',
   },
 ] as const
 
@@ -125,7 +125,7 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
 }
 
 interface CampusHeroProps {
-  onOpenNavigator?: () => void
+  onOpenNavigator?: (category?: string) => void
 }
 
 export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
@@ -291,7 +291,9 @@ export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
                   key={slide.tab}
                   type="button"
                   onClick={() => {
-                    if (selected && slide.tab === 'Navigation' && onOpenNavigator) {
+                    if (slide.tab === 'Spots' && onOpenNavigator) {
+                      onOpenNavigator('student_spot')
+                    } else if (selected && slide.tab === 'Navigation' && onOpenNavigator) {
                       onOpenNavigator()
                     } else {
                       goTo(i)
@@ -480,7 +482,10 @@ export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
         <a
           href={active.href}
           onClick={(e) => {
-            if (active.tab === 'Navigation' && onOpenNavigator) {
+            if (active.tab === 'Spots' && onOpenNavigator) {
+              e.preventDefault()
+              onOpenNavigator('student_spot')
+            } else if (active.tab === 'Navigation' && onOpenNavigator) {
               e.preventDefault()
               onOpenNavigator()
             }
