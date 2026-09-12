@@ -343,16 +343,25 @@ export function subscribeToPlaces(callback: (places: Place[]) => void): () => vo
   let unsubFirestore: (() => void) | null = null
   if (db) {
     try {
-      unsubFirestore = onSnapshot(collection(db, 'campus_places'), (snap) => {
-        const cloudPlaces: Place[] = []
-        snap.forEach((d) => {
-          cloudPlaces.push(d.data() as Place)
-        })
-        if (cloudPlaces.length > 0) {
-          localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudPlaces))
-          callback(cloudPlaces)
+      unsubFirestore = onSnapshot(
+        collection(db, 'campus_places'),
+        (snap) => {
+          const cloudPlaces: Place[] = []
+          snap.forEach((d) => {
+            cloudPlaces.push(d.data() as Place)
+          })
+          if (cloudPlaces.length > 0) {
+            localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudPlaces))
+            callback(cloudPlaces)
+          }
+        },
+        () => {
+          if (unsubFirestore) {
+            unsubFirestore()
+            unsubFirestore = null
+          }
         }
-      })
+      )
     } catch {
       // ignore
     }
@@ -687,6 +696,12 @@ export function subscribeToRoads(callback: (roads: Road[]) => void): () => void 
         if (cloudRoads.length > 0) {
           localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudRoads))
           callback(cloudRoads)
+        }
+      },
+      () => {
+        if (unsubFirestore) {
+          unsubFirestore()
+          unsubFirestore = null
         }
       })
     } catch {

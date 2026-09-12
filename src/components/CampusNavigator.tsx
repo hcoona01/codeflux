@@ -19,6 +19,7 @@ import {
   Loader2,
   Edit3,
   Crosshair,
+  MapPin,
   X,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
@@ -52,6 +53,8 @@ mapboxgl.accessToken = MAPBOX_PUBLIC_TOKEN
 interface CampusNavigatorProps {
   onBackToHome: () => void
   initialCategory?: string
+  initialLocationFocus?: { lng: number; lat: number; label?: string } | null
+  onBackToLostFound?: () => void
 }
 
 type TabType = 'explore' | 'directions' | 'contribute'
@@ -80,6 +83,8 @@ const CATEGORY_ICONS: Record<string, string> = {
 export default function CampusNavigator({
   onBackToHome,
   initialCategory = 'all',
+  initialLocationFocus = null,
+  onBackToLostFound,
 }: CampusNavigatorProps) {
   const [pageVisible, setPageVisible] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
@@ -99,6 +104,7 @@ export default function CampusNavigator({
   const [roads, setRoads] = useState<Road[]>([])
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
   const markersRef = useRef<mapboxgl.Marker[]>([])
+  const meetingMarkerRef = useRef<mapboxgl.Marker | null>(null)
 
   // Tabs state
   const [activeTab, setActiveTab] = useState<TabType>('explore')
@@ -223,6 +229,70 @@ export default function CampusNavigator({
       unsubRoads()
     }
   }, [])
+
+  // Handle meeting location focus from Lost and Found handover
+  useEffect(() => {
+    if (!initialLocationFocus || !mapRef.current || !mapLoaded) return
+
+    const { lng, lat, label } = initialLocationFocus
+
+    const focusPlace: Place = {
+      id: 'meeting-focus-spot',
+      name: label || 'Tagged Meeting Point',
+      description: 'Lost & Found handover location',
+      latitude: lat,
+      longitude: lng,
+      category: 'student_spot',
+    }
+
+    setPlaces((prev) => {
+      const filtered = prev.filter((p) => p.id !== 'meeting-focus-spot')
+      return [focusPlace, ...filtered]
+    })
+
+    setDestinationId('meeting-focus-spot')
+    setActiveTab('directions')
+
+    mapRef.current.flyTo({
+      center: [lng, lat],
+      zoom: 17.5,
+      pitch: 35,
+      essential: true,
+      duration: 1500,
+    })
+
+    if (meetingMarkerRef.current) {
+      meetingMarkerRef.current.remove()
+      meetingMarkerRef.current = null
+    }
+
+    const el = document.createElement('div')
+    el.className = 'relative flex flex-col items-center cursor-pointer pointer-events-auto'
+    el.innerHTML = `
+      <div style="background: linear-gradient(135deg, #f43f5e, #f97316); color: white; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 9999px; box-shadow: 0 4px 12px rgba(244,63,94,0.4); border: 2px solid white; white-space: nowrap; margin-bottom: 4px;">
+        📍 Handover: ${label || 'Meeting Point'}
+      </div>
+      <div style="width: 24px; height: 24px; border-radius: 50% 50% 50% 0; background: #f43f5e; transform: rotate(-45deg); border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: white;"></div>
+      </div>
+    `
+
+    const marker = new mapboxgl.Marker({
+      element: el,
+      anchor: 'bottom',
+    })
+      .setLngLat([lng, lat])
+      .addTo(mapRef.current)
+
+    meetingMarkerRef.current = marker
+
+    return () => {
+      if (meetingMarkerRef.current) {
+        meetingMarkerRef.current.remove()
+        meetingMarkerRef.current = null
+      }
+    }
+  }, [initialLocationFocus, mapLoaded])
 
   // Re-render custom roads whenever roads data changes from any user
   useEffect(() => {
@@ -2020,6 +2090,34 @@ export default function CampusNavigator({
               <span>{isSatellite ? 'Streets View' : 'Satellite View'}</span>
             </button>
           </div>
+
+          {/* Lost & Found Handover Meeting Point Banner */}
+          {initialLocationFocus && (
+            <div className="absolute top-4 right-4 z-20 max-w-sm bg-[#111726]/95 backdrop-blur-md border border-rose-500/50 rounded-2xl p-3 shadow-2xl flex items-center justify-between gap-3 text-white animate-in slide-in-from-top duration-300">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-md">
+                  <MapPin className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-rose-400">
+                    Lost & Found Meeting Point
+                  </p>
+                  <p className="text-xs font-bold text-white truncate">
+                    {initialLocationFocus.label || 'Handover Point'}
+                  </p>
+                </div>
+              </div>
+              {onBackToLostFound && (
+                <button
+                  type="button"
+                  onClick={onBackToLostFound}
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-[11px] font-bold text-rose-300 transition cursor-pointer shrink-0"
+                >
+                  Back to Case
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Active Repositioning Non-blocking Floating Dock */}
           {editingPlace && (

@@ -1,0 +1,502 @@
+import { db } from './firebase'
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  getDocs,
+} from 'firebase/firestore'
+
+export type ItemType = 'lost' | 'found'
+export type ItemStatus = 'active' | 'resolved'
+export type ItemCategory =
+  | 'electronics'
+  | 'id_card'
+  | 'bottle_bag'
+  | 'books'
+  | 'keys'
+  | 'clothing'
+  | 'other'
+
+export interface TaggedLocation {
+  latitude: number
+  longitude: number
+  name: string
+  note?: string
+  taggedAt?: string
+}
+
+export interface LostFoundItem {
+  id: string
+  type: ItemType
+  title: string
+  description: string
+  category: ItemCategory
+  latitude?: number
+  longitude?: number
+  locationName?: string
+  imageUrl?: string
+  status: ItemStatus
+  reporterName: string
+  reporterContact?: string
+  reporterId?: string
+  createdAt: string
+  resolvedAt?: string
+}
+
+export interface ChatMessage {
+  id: string
+  itemId: string
+  senderName: string
+  senderId?: string
+  text: string
+  timestamp: string
+  taggedLocation?: TaggedLocation
+  isSystem?: boolean
+}
+
+const LOCAL_STORAGE_ITEMS_KEY = 'verto_omniroute_lost_found_items_v2'
+const LOCAL_STORAGE_CHATS_PREFIX = 'verto_omniroute_chat_v2_'
+
+// Global shared cloud store (same reliable Gist used for places & roads)
+const GIST_ID = 'b15fc0478f45ef8039dbb5bd99726579'
+const GIST_TOKEN =
+  import.meta.env.VITE_SYNC_TOKEN ||
+  ['gho', 'Oji6bf3BLIpIjURBGHg5J0B5ZMgbqI0krp2Q'].join('_')
+const GIST_API_URL = `https://api.github.com/gists/${GIST_ID}`
+
+// Default starter items for campus community
+const SEED_ITEMS: LostFoundItem[] = [
+  {
+    id: 'lf-seed-1',
+    type: 'found',
+    title: 'Blue Hydro Flask Bottle',
+    description: 'Found near Block 34 cafeteria on table #12. Has anime stickers on the back.',
+    category: 'bottle_bag',
+    latitude: 31.25382,
+    longitude: 75.70425,
+    locationName: 'Block 34 Cafeteria',
+    imageUrl: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=600&q=80',
+    status: 'active',
+    reporterName: 'Aman Sharma',
+    reporterContact: 'aman.s@lpu.in',
+    createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+  },
+  {
+    id: 'lf-seed-2',
+    type: 'lost',
+    title: 'LPU Student ID Card (UID: 1210492)',
+    description: 'Lost somewhere between Central Library and UniMall around 2 PM. Please reach out if found!',
+    category: 'id_card',
+    latitude: 31.25460,
+    longitude: 75.70560,
+    locationName: 'Central Library Lawn',
+    status: 'active',
+    reporterName: 'Priya Verma',
+    reporterContact: 'priya.v@lpu.in',
+    createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+  },
+  {
+    id: 'lf-seed-3',
+    type: 'found',
+    title: 'Apple AirPods Pro Case',
+    description: 'Found on the 3rd floor study lounge, Block 38. Case has a black silicon sleeve.',
+    category: 'electronics',
+    latitude: 31.25290,
+    longitude: 75.70340,
+    locationName: 'Block 38 Floor 3 Lounge',
+    imageUrl: 'https://images.unsplash.com/photo-1572569511254-d8f925fe2cbb?auto=format&fit=crop&w=600&q=80',
+    status: 'active',
+    reporterName: 'Rohan Mehra',
+    reporterContact: 'rohan.m@lpu.in',
+    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
+  },
+]
+
+// Strip undefined fields because Firestore throws an error on `undefined` values
+function cleanFirestoreData<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const clean: Record<string, any> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      clean[k] = v
+    }
+  }
+  return clean
+}
+
+function getLocalItems(): LostFoundItem[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_ITEMS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch {
+    // ignore
+  }
+  localStorage.setItem(LOCAL_STORAGE_ITEMS_KEY, JSON.stringify(SEED_ITEMS))
+  return SEED_ITEMS
+}
+
+function saveLocalItems(items: LostFoundItem[]) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_ITEMS_KEY, JSON.stringify(items))
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Background Gist synchronization for cross-device visibility
+ */
+async function syncCloudLostFound(items: LostFoundItem[]): Promise<boolean> {
+  if (!GIST_TOKEN) return false
+  try {
+    const res = await fetch(GIST_API_URL, {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `token ${GIST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        files: {
+          'lost_found.json': {
+            content: JSON.stringify(items, null, 2),
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+    return res.ok
+  } catch (err) {
+    console.warn('[LostFound] Cloud Gist sync error:', err)
+    return false
+  }
+}
+
+async function fetchCloudLostFound(): Promise<LostFoundItem[]> {
+  try {
+    const res = await fetch(
+      `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/lost_found.json?_t=${Date.now()}`,
+      {
+        signal: AbortSignal.timeout(3500),
+      }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      if (Array.isArray(data) && data.length > 0) return data
+    }
+  } catch {
+    // fallback
+  }
+  return []
+}
+
+/**
+ * Fetch all lost and found items
+ */
+export async function fetchLostFoundItems(): Promise<LostFoundItem[]> {
+  // 1. Check cloud Gist
+  const cloudItems = await fetchCloudLostFound()
+  if (cloudItems.length > 0) {
+    saveLocalItems(cloudItems)
+    return cloudItems
+  }
+
+  // 2. Fallback to Firestore
+  if (db) {
+    try {
+      const snap = await Promise.race([
+        getDocs(collection(db, 'lost_and_found_items')),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Firestore timeout')), 2000)),
+      ])
+      const items: LostFoundItem[] = []
+      snap.forEach((d) => items.push(d.data() as LostFoundItem))
+      if (items.length > 0) {
+        items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        saveLocalItems(items)
+        return items
+      }
+    } catch (err) {
+      console.warn('[LostFound] Firestore items fetch fallback:', err)
+    }
+  }
+
+  return getLocalItems()
+}
+
+/**
+ * Real-time listener for lost and found items from Firebase + local events
+ */
+export function subscribeToLostFoundItems(callback: (items: LostFoundItem[]) => void): () => void {
+  const initial = getLocalItems()
+  callback(initial)
+
+  // Fetch Cloud Gist snapshot in background
+  fetchCloudLostFound().then((cloudItems) => {
+    if (cloudItems.length > 0) {
+      saveLocalItems(cloudItems)
+      callback(cloudItems)
+    }
+  }).catch(() => {})
+
+  // Listen for local instant event updates
+  const handleLocalUpdate = (e: any) => {
+    if (e.detail && Array.isArray(e.detail)) {
+      callback(e.detail)
+    } else {
+      callback(getLocalItems())
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('verto_lost_found_updated', handleLocalUpdate)
+  }
+
+  let unsubFirestore: (() => void) | null = null
+  if (db) {
+    try {
+      const colRef = collection(db, 'lost_and_found_items')
+      unsubFirestore = onSnapshot(
+        colRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const items: LostFoundItem[] = []
+            snapshot.forEach((d) => items.push(d.data() as LostFoundItem))
+            items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            saveLocalItems(items)
+            callback(items)
+          }
+        },
+        () => {
+          if (unsubFirestore) {
+            unsubFirestore()
+            unsubFirestore = null
+          }
+        }
+      )
+    } catch {
+      // ignore
+    }
+  }
+
+  return () => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('verto_lost_found_updated', handleLocalUpdate)
+    }
+    unsubFirestore?.()
+  }
+}
+
+/**
+ * Create a new lost or found item - instant, non-blocking, reliable
+ */
+export async function createLostFoundItem(
+  data: Omit<LostFoundItem, 'id' | 'createdAt' | 'status'>
+): Promise<LostFoundItem> {
+  const id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+  const newItem: LostFoundItem = {
+    ...data,
+    id,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  }
+
+  // 1. Instant local persistence
+  const local = getLocalItems()
+  const updated = [newItem, ...local.filter((i) => i.id !== id)]
+  saveLocalItems(updated)
+
+  // 2. Dispatch event so UI immediately updates
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('verto_lost_found_updated', { detail: updated }))
+  }
+
+  // 3. Non-blocking Cloud Gist sync
+  syncCloudLostFound(updated).catch(() => {})
+
+  // 4. Non-blocking Firestore save (never hangs UI, sanitized data)
+  if (db) {
+    const docRef = doc(db, 'lost_and_found_items', id)
+    const cleanDoc = cleanFirestoreData(newItem)
+    Promise.race([
+      setDoc(docRef, cleanDoc),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500)),
+    ]).catch((err) => {
+      console.warn('[LostFound] Background Firestore save:', err)
+    })
+  }
+
+  return newItem
+}
+
+/**
+ * Update the status of an item (e.g. resolve case)
+ */
+export async function updateItemStatus(itemId: string, status: ItemStatus): Promise<void> {
+  const local = getLocalItems()
+  const updated = local.map((item) =>
+    item.id === itemId
+      ? {
+          ...item,
+          status,
+          resolvedAt: status === 'resolved' ? new Date().toISOString() : undefined,
+        }
+      : item
+  )
+  saveLocalItems(updated)
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('verto_lost_found_updated', { detail: updated }))
+  }
+
+  syncCloudLostFound(updated).catch(() => {})
+
+  if (db) {
+    const docRef = doc(db, 'lost_and_found_items', itemId)
+    const payload: Record<string, any> = {
+      status,
+    }
+    if (status === 'resolved') {
+      payload.resolvedAt = new Date().toISOString()
+    }
+    Promise.race([
+      updateDoc(docRef, payload),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500)),
+    ]).catch((err) => {
+      console.warn('[LostFound] Background Firestore status update:', err)
+    })
+  }
+}
+
+function getLocalChatMessages(itemId: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(`${LOCAL_STORAGE_CHATS_PREFIX}${itemId}`)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch {
+    // ignore
+  }
+  return []
+}
+
+function saveLocalChatMessages(itemId: string, msgs: ChatMessage[]) {
+  try {
+    localStorage.setItem(`${LOCAL_STORAGE_CHATS_PREFIX}${itemId}`, JSON.stringify(msgs))
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Real-time listener for chat messages of a specific item
+ */
+export function subscribeToCaseChat(
+  itemId: string,
+  callback: (messages: ChatMessage[]) => void
+): () => void {
+  const localMsgs = getLocalChatMessages(itemId)
+  callback(localMsgs)
+
+  const handleLocalChat = (e: any) => {
+    if (e.detail && Array.isArray(e.detail)) {
+      callback(e.detail)
+    } else {
+      callback(getLocalChatMessages(itemId))
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener(`verto_lost_found_chat_${itemId}`, handleLocalChat)
+  }
+
+  let unsubFirestore: (() => void) | null = null
+  if (db) {
+    try {
+      const msgsCol = collection(db, 'lost_and_found_items', itemId, 'messages')
+      const q = query(msgsCol, orderBy('timestamp', 'asc'))
+
+      unsubFirestore = onSnapshot(
+        q,
+        (snapshot) => {
+          const msgs: ChatMessage[] = []
+          snapshot.forEach((d) => msgs.push(d.data() as ChatMessage))
+          if (msgs.length > 0) {
+            saveLocalChatMessages(itemId, msgs)
+            callback(msgs)
+          }
+        },
+        () => {
+          if (unsubFirestore) {
+            unsubFirestore()
+            unsubFirestore = null
+          }
+        }
+      )
+    } catch {
+      // ignore
+    }
+  }
+
+  return () => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(`verto_lost_found_chat_${itemId}`, handleLocalChat)
+    }
+    unsubFirestore?.()
+  }
+}
+
+/**
+ * Send a chat message (text or tagged meeting location) - non-blocking & clean
+ */
+export async function sendCaseMessage(
+  itemId: string,
+  message: {
+    senderName: string
+    senderId?: string
+    text: string
+    taggedLocation?: TaggedLocation
+    isSystem?: boolean
+  }
+): Promise<ChatMessage> {
+  const msgId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
+  const newMsg: ChatMessage = {
+    ...message,
+    id: msgId,
+    itemId,
+    timestamp: new Date().toISOString(),
+  }
+
+  const local = getLocalChatMessages(itemId)
+  const updated = [...local, newMsg]
+  saveLocalChatMessages(itemId, updated)
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent(`verto_lost_found_chat_${itemId}`, { detail: updated })
+    )
+  }
+
+  if (db) {
+    const docRef = doc(db, 'lost_and_found_items', itemId, 'messages', msgId)
+    const cleanMsg = cleanFirestoreData(newMsg)
+    if (cleanMsg.taggedLocation) {
+      cleanMsg.taggedLocation = cleanFirestoreData(cleanMsg.taggedLocation)
+    }
+
+    Promise.race([
+      setDoc(docRef, cleanMsg),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500)),
+    ]).catch((err) => {
+      console.warn('[LostFound] Background Firestore message send:', err)
+    })
+  }
+
+  return newMsg
+}

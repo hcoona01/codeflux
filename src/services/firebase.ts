@@ -7,7 +7,13 @@ import {
   onAuthStateChanged,
   type User,
 } from 'firebase/auth'
-import { getFirestore, type Firestore } from 'firebase/firestore'
+import { getFirestore, setLogLevel, type Firestore } from 'firebase/firestore'
+
+try {
+  setLogLevel('silent')
+} catch {
+  // ignore
+}
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCbVD4VJU3Ut6RRDuMw6rkXpdH8or1wBOc',

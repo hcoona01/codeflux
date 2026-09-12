@@ -126,9 +126,13 @@ function itemStyle(role: Role, isMobile: boolean): CSSProperties {
 
 interface CampusHeroProps {
   onOpenNavigator?: (category?: string) => void
+  onOpenLostAndFound?: () => void
 }
 
-export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
+export default function CampusHero({
+  onOpenNavigator,
+  onOpenLostAndFound,
+}: CampusHeroProps = {}) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [isAnimating, setIsAnimating] = useState(false)
   const [isMobile, setIsMobile] = useState(
@@ -293,6 +297,8 @@ export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
                   onClick={() => {
                     if (slide.tab === 'Spots' && onOpenNavigator) {
                       onOpenNavigator('student_spot')
+                    } else if (slide.tab === 'Lost & Found' && onOpenLostAndFound) {
+                      onOpenLostAndFound()
                     } else if (selected && slide.tab === 'Navigation' && onOpenNavigator) {
                       onOpenNavigator()
                     } else {
@@ -485,6 +491,9 @@ export default function CampusHero({ onOpenNavigator }: CampusHeroProps = {}) {
             if (active.tab === 'Spots' && onOpenNavigator) {
               e.preventDefault()
               onOpenNavigator('student_spot')
+            } else if (active.tab === 'Lost & Found' && onOpenLostAndFound) {
+              e.preventDefault()
+              onOpenLostAndFound()
             } else if (active.tab === 'Navigation' && onOpenNavigator) {
               e.preventDefault()
               onOpenNavigator()
