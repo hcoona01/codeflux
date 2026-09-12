@@ -21,6 +21,10 @@ import {
   Crosshair,
   MapPin,
   X,
+  Volume2,
+  VolumeX,
+  Play,
+  Square,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import type { FeatureCollection, Feature } from 'geojson'
@@ -29,6 +33,12 @@ import NavigatorHeader from './NavigatorHeader'
 import AuthModal from './AuthModal'
 import CharacterOverlay from './CharacterOverlay'
 import { subscribeToAuthChanges, logoutUser } from '../services/firebase'
+import {
+  speakText,
+  stopSpeaking,
+  buildRouteStartSpeech,
+  buildStepSpeech,
+} from '../services/voiceAssistant'
 import {
   MAPBOX_PUBLIC_TOKEN,
   LPU_CENTER_COORDS,
@@ -135,6 +145,17 @@ export default function CampusNavigator({
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
 
+  // Voice Guidance & Guide Character Speech state
+  const [voiceAssistanceEnabled, setVoiceAssistanceEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('omniroute_voice_enabled') !== 'false'
+    }
+    return true
+  })
+  const [isGuideSpeaking, setIsGuideSpeaking] = useState(false)
+  const [guideSpeakingText, setGuideSpeakingText] = useState<string | null>(null)
+  const [activeSpeechStepIdx, setActiveSpeechStepIdx] = useState<number | null>(null)
+
   // Contribute state
   const [contributeMode, setContributeMode] = useState<'place' | 'road' | 'update'>('place')
   const [newPlaceName, setNewPlaceName] = useState('')
@@ -193,7 +214,10 @@ export default function CampusNavigator({
     const anim = requestAnimationFrame(() => {
       setPageVisible(true)
     })
-    return () => cancelAnimationFrame(anim)
+    return () => {
+      cancelAnimationFrame(anim)
+      stopSpeaking()
+    }
   }, [])
 
   // Listen to Firebase Auth
@@ -470,7 +494,7 @@ export default function CampusNavigator({
               ['coalesce', ['get', 'min_height'], 0],
             ],
             // Solid, prominent opacity - eliminates any faded or washed-out appearance
-            'fill-extrusion-opacity': 0.2,
+            'fill-extrusion-opacity': 0.9,
             'fill-extrusion-vertical-gradient': true,
           },
         },
@@ -487,9 +511,9 @@ export default function CampusNavigator({
           type: 'line',
           minzoom: 14,
           paint: {
-            'line-color': isSat ? '#38bdf8' : '#ea580c',
+            'line-color': isSat ? '#803d0dff' : '#ea580c',
             'line-width': 2,
-            'line-opacity': 0.9,
+            'line-opacity': 1,
           },
         },
         labelLayerId,
@@ -544,9 +568,9 @@ export default function CampusNavigator({
           'line-cap': 'round',
         },
         paint: {
-          'line-color': '#0284c7',
+          'line-color': '#955507ff',
           'line-width': 4,
-          'line-opacity': 0.8,
+          'line-opacity': 0.2,
         },
       })
     }
@@ -842,13 +866,101 @@ export default function CampusNavigator({
     })
   }
 
+  // Voice Guidance Handlers
+  const toggleVoiceAssistance = () => {
+    const next = !voiceAssistanceEnabled
+    setVoiceAssistanceEnabled(next)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('omniroute_voice_enabled', next ? 'true' : 'false')
+    }
+    if (!next) {
+      stopSpeaking()
+      setIsGuideSpeaking(false)
+      setGuideSpeakingText(null)
+      setActiveSpeechStepIdx(null)
+    } else {
+      const greeting =
+        "Voice guidance activated. I'm ready to accurately guide you around campus!"
+      setGuideSpeakingText(greeting)
+      speakText(greeting, {
+        onStart: () => setIsGuideSpeaking(true),
+        onEnd: () => {
+          setIsGuideSpeaking(false)
+        },
+      })
+    }
+  }
+
+  const handleStopGuideSpeaking = () => {
+    stopSpeaking()
+    setIsGuideSpeaking(false)
+    setGuideSpeakingText(null)
+    setActiveSpeechStepIdx(null)
+  }
+
+  const speakRouteGuidance = (resultToSpeak?: RouteResult | null, targetDestId?: string) => {
+    const targetRoute = resultToSpeak || routeResult
+    if (!targetRoute) return
+
+    const dest = places.find((p) => p.id === (targetDestId || destinationId))
+    const destName = dest ? dest.name : 'your destination'
+    const firstStep =
+      targetRoute.steps && targetRoute.steps.length > 0
+        ? targetRoute.steps[0].instruction
+        : undefined
+
+    const speech = buildRouteStartSpeech(
+      destName,
+      targetRoute.duration,
+      targetRoute.distance,
+      firstStep,
+      targetRoute.isCampusShortcut,
+    )
+
+    setGuideSpeakingText(speech)
+    setActiveSpeechStepIdx(-1)
+    speakText(speech, {
+      onStart: () => setIsGuideSpeaking(true),
+      onEnd: () => {
+        setIsGuideSpeaking(false)
+      },
+      onError: () => {
+        setIsGuideSpeaking(false)
+      },
+    })
+  }
+
+  const speakSingleStep = (stepIdx: number) => {
+    if (!routeResult || !routeResult.steps || !routeResult.steps[stepIdx]) return
+    const step = routeResult.steps[stepIdx]
+    const speech = buildStepSpeech(
+      stepIdx,
+      routeResult.steps.length,
+      step.instruction,
+      step.distance,
+    )
+
+    setGuideSpeakingText(speech)
+    setActiveSpeechStepIdx(stepIdx)
+    speakText(speech, {
+      onStart: () => setIsGuideSpeaking(true),
+      onEnd: () => {
+        setIsGuideSpeaking(false)
+      },
+      onError: () => {
+        setIsGuideSpeaking(false)
+      },
+    })
+  }
+
   // Handle Calculate Route
-  const handleCalculateRoute = async () => {
+  const handleCalculateRoute = async (overrideDestId?: string, overrideOriginId?: string) => {
     setRouteError(null)
     setRouteResult(null)
 
+    const effectiveOriginId = overrideOriginId || originId
     let originCoords: [number, number] | null = null
-    if (originId === 'gps') {
+    if (effectiveOriginId === 'gps') {
       if (currentGps) {
         originCoords = currentGps
       } else {
@@ -856,11 +968,12 @@ export default function CampusNavigator({
         return
       }
     } else {
-      const orig = places.find((p) => p.id === originId)
+      const orig = places.find((p) => p.id === effectiveOriginId)
       if (orig) originCoords = [orig.longitude, orig.latitude]
     }
 
-    const dest = places.find((p) => p.id === destinationId)
+    const effectiveDestId = overrideDestId || destinationId
+    const dest = places.find((p) => p.id === effectiveDestId)
     if (!dest) {
       setRouteError('Please select a valid campus destination.')
       return
@@ -877,6 +990,11 @@ export default function CampusNavigator({
       const result = await fetchMapboxRoute(originCoords, destCoords, travelMode, roads)
       setRouteResult(result)
       renderRouteOnMap(result.geometry, originCoords, destCoords)
+
+      // Accurately speak directions when navigation starts
+      if (voiceAssistanceEnabled) {
+        speakRouteGuidance(result, dest.id)
+      }
     } catch (err: any) {
       setRouteError(err.message || 'Failed to calculate directions. Check network.')
     } finally {
@@ -916,7 +1034,7 @@ export default function CampusNavigator({
         paint: {
           'line-color': '#f97316',
           'line-width': 9,
-          'line-opacity': 0.4,
+          'line-opacity': 0.2,
         },
       })
 
@@ -946,6 +1064,7 @@ export default function CampusNavigator({
 
   // Clear Route
   const handleClearRoute = () => {
+    handleStopGuideSpeaking()
     setRouteResult(null)
     setRouteError(null)
     if (mapRef.current) {
@@ -1246,8 +1365,8 @@ export default function CampusNavigator({
                 setMobileDrawerOpen(true)
               }}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${activeTab === 'explore'
-                  ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
+                ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
                 }`}
             >
               <Compass className="h-4 w-4" />
@@ -1260,8 +1379,8 @@ export default function CampusNavigator({
                 setMobileDrawerOpen(true)
               }}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${activeTab === 'directions'
-                  ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
+                ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
                 }`}
             >
               <NavIcon className="h-4 w-4" />
@@ -1274,8 +1393,8 @@ export default function CampusNavigator({
                 setMobileDrawerOpen(true)
               }}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${activeTab === 'contribute'
-                  ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
+                ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
                 }`}
             >
               <PlusCircle className="h-4 w-4" />
@@ -1305,8 +1424,8 @@ export default function CampusNavigator({
                     key={cat}
                     onClick={() => setCategoryFilter(cat)}
                     className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${categoryFilter === cat
-                        ? 'bg-orange-600 text-white shadow-xs'
-                        : 'bg-[#fff3e8] border border-orange-200/60 text-slate-700 hover:bg-orange-100/80'
+                      ? 'bg-orange-600 text-white shadow-xs'
+                      : 'bg-[#fff3e8] border border-orange-200/60 text-slate-700 hover:bg-orange-100/80'
                       }`}
                   >
                     {cat.replace('_', ' ')}
@@ -1326,8 +1445,8 @@ export default function CampusNavigator({
                       key={place.id}
                       onClick={() => handleFocusPlace(place)}
                       className={`group rounded-xl border p-3 transition-all cursor-pointer ${selectedPlace?.id === place.id
-                          ? 'border-orange-500 bg-orange-50/80 shadow-sm ring-1 ring-orange-400/40'
-                          : 'border-orange-200/60 bg-[#fffcf9] hover:border-orange-300 hover:bg-white hover:shadow-xs'
+                        ? 'border-orange-500 bg-orange-50/80 shadow-sm ring-1 ring-orange-400/40'
+                        : 'border-orange-200/60 bg-[#fffcf9] hover:border-orange-300 hover:bg-white hover:shadow-xs'
                         }`}
                     >
                       <div className="flex gap-3">
@@ -1401,8 +1520,8 @@ export default function CampusNavigator({
                   type="button"
                   onClick={() => setTravelMode('walking')}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${travelMode === 'walking'
-                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
-                      : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
+                    : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
                   <Footprints className="h-3.5 w-3.5" />
@@ -1412,8 +1531,8 @@ export default function CampusNavigator({
                   type="button"
                   onClick={() => setTravelMode('cycling')}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${travelMode === 'cycling'
-                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
-                      : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
+                    : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
                   <Bike className="h-3.5 w-3.5" />
@@ -1479,10 +1598,59 @@ export default function CampusNavigator({
                 </div>
               </div>
 
+              {/* Voice Assistance Option Switch */}
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-orange-200/70 bg-[#fffbf7] px-3 py-2 text-xs mb-3">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors ${
+                      voiceAssistanceEnabled
+                        ? isGuideSpeaking
+                          ? 'bg-orange-600 text-white animate-pulse'
+                          : 'bg-orange-100 text-orange-600'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    {voiceAssistanceEnabled ? (
+                      <Volume2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <VolumeX className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-slate-800 font-bold text-[11px] flex items-center gap-1.5">
+                      <span>Voice Assistance</span>
+                      {isGuideSpeaking && (
+                        <span className="rounded-full bg-orange-600 px-1.5 py-0.2 text-[8px] font-extrabold uppercase text-white animate-pulse">
+                          Speaking
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-medium">
+                      {voiceAssistanceEnabled
+                        ? 'Speaks navigation directions automatically'
+                        : 'Voice guidance is muted'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleVoiceAssistance}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition cursor-pointer shadow-2xs ${
+                    voiceAssistanceEnabled
+                      ? 'bg-orange-600 text-white hover:bg-orange-700'
+                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                  }`}
+                  title={voiceAssistanceEnabled ? 'Mute Voice Assistance' : 'Enable Voice Assistance'}
+                >
+                  {voiceAssistanceEnabled ? 'Voice ON' : 'Voice OFF'}
+                </button>
+              </div>
+
               {/* Action Buttons */}
               <div className="flex gap-2 mb-3">
                 <button
-                  onClick={handleCalculateRoute}
+                  onClick={() => handleCalculateRoute()}
                   disabled={routeLoading}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-600 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-orange-700 active:scale-95 transition disabled:opacity-60 cursor-pointer"
                 >
@@ -1533,6 +1701,64 @@ export default function CampusNavigator({
                     </div>
                   )}
 
+                  {/* Active Voice Guidance Controls */}
+                  <div className="flex items-center justify-between gap-2 rounded-2xl bg-orange-50/90 border border-orange-200 p-3 shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                          isGuideSpeaking
+                            ? 'bg-orange-600 text-white shadow-sm animate-pulse'
+                            : 'bg-orange-100 text-orange-700'
+                        }`}
+                      >
+                        {isGuideSpeaking ? (
+                          <Volume2 className="h-4 w-4 animate-bounce" />
+                        ) : (
+                          <Volume2 className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <span>Guide Audio</span>
+                          {isGuideSpeaking && (
+                            <span className="text-[9px] font-extrabold uppercase text-orange-600 bg-white px-1.5 py-0.5 rounded-full border border-orange-200">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium">
+                          {isGuideSpeaking
+                            ? 'Accurately speaking turn-by-turn...'
+                            : 'Click Speak to hear spoken guidance'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {isGuideSpeaking ? (
+                        <button
+                          type="button"
+                          onClick={handleStopGuideSpeaking}
+                          className="flex items-center gap-1 rounded-xl bg-slate-800 hover:bg-slate-900 px-3 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-xs"
+                          title="Stop voice guidance"
+                        >
+                          <Square className="h-3 w-3 fill-current" />
+                          <span>Stop</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => speakRouteGuidance()}
+                          className="flex items-center gap-1 rounded-xl bg-orange-600 hover:bg-orange-700 px-3 py-1.5 text-xs font-bold text-white transition cursor-pointer shadow-xs"
+                          title="Speak route directions"
+                        >
+                          <Play className="h-3 w-3 fill-current" />
+                          <span>Speak</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 p-4 text-white shadow-md">
                     <div>
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-white/80">
@@ -1554,26 +1780,69 @@ export default function CampusNavigator({
 
                   {/* Steps List */}
                   <div>
-                    <h5 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Turn-by-Turn Guidance ({routeResult.steps.length} steps)
-                    </h5>
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Turn-by-Turn Guidance ({routeResult.steps.length} steps)
+                      </h5>
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        Tap speaker to listen
+                      </span>
+                    </div>
+
                     <div className="space-y-2">
-                      {routeResult.steps.map((step, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-start gap-2.5 rounded-xl border border-orange-200/60 bg-[#fffcf9] p-2.5 text-xs text-slate-800"
-                        >
-                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600 font-bold text-[10px]">
-                            {idx + 1}
+                      {routeResult.steps.map((step, idx) => {
+                        const isThisStepSpeaking = isGuideSpeaking && activeSpeechStepIdx === idx
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-all ${
+                              isThisStepSpeaking
+                                ? 'border-orange-500 bg-orange-50/90 shadow-sm ring-1 ring-orange-300'
+                                : 'border-orange-200/60 bg-[#fffcf9] text-slate-800 hover:border-orange-300'
+                            }`}
+                          >
+                            <div
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${
+                                isThisStepSpeaking
+                                  ? 'bg-orange-600 text-white'
+                                  : 'bg-orange-100 text-orange-600'
+                              }`}
+                            >
+                              {idx + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium leading-relaxed">{step.instruction}</p>
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                {step.distance} meters
+                              </span>
+                            </div>
+
+                            {/* Audio Step Trigger Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isThisStepSpeaking) {
+                                  handleStopGuideSpeaking()
+                                } else {
+                                  speakSingleStep(idx)
+                                }
+                              }}
+                              className={`shrink-0 rounded-lg p-1.5 transition cursor-pointer ${
+                                isThisStepSpeaking
+                                  ? 'bg-orange-600 text-white shadow-xs'
+                                  : 'text-slate-400 hover:text-orange-600 hover:bg-orange-100/60'
+                              }`}
+                              title={isThisStepSpeaking ? 'Stop speaking step' : 'Speak this step'}
+                            >
+                              {isThisStepSpeaking ? (
+                                <Square className="h-3.5 w-3.5 fill-current" />
+                              ) : (
+                                <Volume2 className="h-3.5 w-3.5" />
+                              )}
+                            </button>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium leading-relaxed">{step.instruction}</p>
-                            <span className="text-[10px] font-semibold text-slate-400">
-                              {step.distance} meters
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1590,8 +1859,8 @@ export default function CampusNavigator({
                   type="button"
                   onClick={() => setContributeMode('place')}
                   className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${contributeMode === 'place'
-                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
-                      : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
+                    : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
                   📍 Add Place
@@ -1600,8 +1869,8 @@ export default function CampusNavigator({
                   type="button"
                   onClick={() => setContributeMode('update')}
                   className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${contributeMode === 'update'
-                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
-                      : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
+                    : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
                   ✏️ Fix Location
@@ -1610,8 +1879,8 @@ export default function CampusNavigator({
                   type="button"
                   onClick={() => setContributeMode('road')}
                   className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${contributeMode === 'road'
-                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
-                      : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
+                    : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
                   🛣️ Draw Road
@@ -1912,8 +2181,8 @@ export default function CampusNavigator({
                             type="button"
                             onClick={() => setIsPickingLocation(!isPickingLocation)}
                             className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${isPickingLocation
-                                ? 'bg-orange-600 text-white shadow-xs'
-                                : 'bg-[#fffcf9] border border-orange-300 text-orange-800 hover:bg-orange-100'
+                              ? 'bg-orange-600 text-white shadow-xs'
+                              : 'bg-[#fffcf9] border border-orange-300 text-orange-800 hover:bg-orange-100'
                               }`}
                           >
                             {isPickingLocation ? '🎯 Map Click Active' : 'Click Map to Pick'}
@@ -2169,8 +2438,8 @@ export default function CampusNavigator({
             <button
               onClick={toggle3dPitch}
               className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-md transition cursor-pointer ${is3dMode
-                  ? 'border-orange-500 bg-orange-600 text-white shadow-orange-500/20'
-                  : 'border-orange-200/80 bg-[#fffbf8]/95 text-slate-800 hover:bg-white hover:text-orange-600'
+                ? 'border-orange-500 bg-orange-600 text-white shadow-orange-500/20'
+                : 'border-orange-200/80 bg-[#fffbf8]/95 text-slate-800 hover:bg-white hover:text-orange-600'
                 }`}
               title="Toggle 3D Terrain & Building Perspective"
             >
@@ -2276,9 +2545,26 @@ export default function CampusNavigator({
             </div>
           )}
 
-          {/* Interactive 3D Mascot Character in the Corner (Requirement 3) */}
+          {/* Interactive 3D Mascot Character in the Corner */}
           <CharacterOverlay
             places={places}
+            voiceAssistanceEnabled={voiceAssistanceEnabled}
+            onToggleVoiceAssistance={toggleVoiceAssistance}
+            isSpeaking={isGuideSpeaking}
+            speakingText={guideSpeakingText}
+            onStopSpeaking={handleStopGuideSpeaking}
+            onReplaySpeech={() => {
+              if (activeSpeechStepIdx !== null && activeSpeechStepIdx >= 0) {
+                speakSingleStep(activeSpeechStepIdx)
+              } else if (routeResult) {
+                speakRouteGuidance()
+              } else if (guideSpeakingText) {
+                speakText(guideSpeakingText, {
+                  onStart: () => setIsGuideSpeaking(true),
+                  onEnd: () => setIsGuideSpeaking(false),
+                })
+              }
+            }}
             onOpenContribute={() => {
               setActiveTab('contribute')
               setContributeMode('place')
@@ -2286,7 +2572,7 @@ export default function CampusNavigator({
             onQuickNavigate={(destId) => {
               setDestinationId(destId)
               setActiveTab('directions')
-              handleCalculateRoute()
+              handleCalculateRoute(destId)
             }}
           />
         </div>
