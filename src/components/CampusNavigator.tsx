@@ -412,8 +412,16 @@ export default function CampusNavigator({
       map.removeSource('lpu-3d-landmarks')
     }
 
+    // Remove existing 3D layers on style reload
+    if (map.getLayer('3d-buildings-outline')) {
+      map.removeLayer('3d-buildings-outline')
+    }
+    if (map.getLayer('3d-buildings')) {
+      map.removeLayer('3d-buildings')
+    }
+
     // 3D structures configured from the 2D map's actual vector building footprints
-    if (!map.getLayer('3d-buildings') && map.getSource('composite')) {
+    if (map.getSource('composite')) {
       map.addLayer(
         {
           id: '3d-buildings',
@@ -423,9 +431,26 @@ export default function CampusNavigator({
           type: 'fill-extrusion',
           minzoom: 14,
           paint: {
-            // In satellite mode: realistic translucent glass volume so real satellite rooftops & textures show through
-            // In 2D map streets mode: clean architectural neutral tone matching the 2D map layout
-            'fill-extrusion-color': isSat ? '#f1f5f9' : '#cbd5e1',
+            // Bold, high-contrast architectural colors
+            'fill-extrusion-color': isSat
+              ? [
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', 'height'], 20],
+                  0, '#ffffff',
+                  16, '#f1f5f9',
+                  28, '#e2e8f0',
+                  45, '#cbd5e1',
+                ]
+              : [
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', 'height'], 20],
+                  0, '#ffffff',
+                  16, '#f8fafc',
+                  28, '#e2e8f0',
+                  45, '#cbd5e1',
+                ],
             'fill-extrusion-height': [
               'interpolate',
               ['linear'],
@@ -433,7 +458,7 @@ export default function CampusNavigator({
               14,
               0,
               14.5,
-              ['coalesce', ['get', 'height'], 16],
+              ['coalesce', ['get', 'height'], 22],
             ],
             'fill-extrusion-base': [
               'interpolate',
@@ -444,21 +469,40 @@ export default function CampusNavigator({
               14.5,
               ['coalesce', ['get', 'min_height'], 0],
             ],
-            'fill-extrusion-opacity': isSat ? 0.32 : 0.75,
+            // Solid, prominent opacity - eliminates any faded or washed-out appearance
+            'fill-extrusion-opacity': 0.94,
             'fill-extrusion-vertical-gradient': true,
+          },
+        },
+        labelLayerId,
+      )
+
+      // Sharp architectural perimeter lines so building footprints pop with crisp definition
+      map.addLayer(
+        {
+          id: '3d-buildings-outline',
+          source: 'composite',
+          'source-layer': 'building',
+          filter: ['==', 'extrude', 'true'],
+          type: 'line',
+          minzoom: 14,
+          paint: {
+            'line-color': isSat ? '#38bdf8' : '#ea580c',
+            'line-width': 2,
+            'line-opacity': 0.9,
           },
         },
         labelLayerId,
       )
     }
 
-    // Directional lighting without fog
+    // High-contrast directional sun lighting for dramatic 3D facade depth and shadows
     try {
       map.setLight({
         anchor: 'viewport',
         color: '#ffffff',
-        intensity: 0.35,
-        position: [1.15, 210, 30],
+        intensity: 0.72,
+        position: [1.3, 210, 32],
       })
     } catch {
       // quiet
