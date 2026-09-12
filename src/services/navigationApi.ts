@@ -50,6 +50,8 @@ export interface RouteResult {
   duration: number
   geometry: any
   steps: RouteStep[]
+  isCampusShortcut?: boolean
+  shortcutRoadNames?: string[]
 }
 
 const LOCAL_STORAGE_PLACES_KEY = 'verto_omniroute_places_v2'
@@ -860,45 +862,348 @@ export async function uploadImageFile(file: File): Promise<string> {
   })
 }
 
+/**
+ * Haversine formula for calculating spherical distance between two points in meters.
+ */
+export function haversineDistance(coord1: [number, number], coord2: [number, number]): number {
+  const R = 6371000 // Earth radius in meters
+  const lat1 = (coord1[1] * Math.PI) / 180
+  const lat2 = (coord2[1] * Math.PI) / 180
+  const dLat = ((coord2[1] - coord1[1]) * Math.PI) / 180
+  const dLng = ((coord2[0] - coord1[0]) * Math.PI) / 180
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+interface GraphEdge {
+  node: string
+  dist: number
+  roadName: string
+  roadCategory: string
+  isCustomRoad: boolean
+}
+
+/**
+ * Computes custom campus pathways route using Dijkstra graph search over user-drawn roads.
+ */
+export function computeCampusRoadRoute(
+  origin: [number, number],
+  destination: [number, number],
+  mode: 'walking' | 'cycling' | 'driving' = 'walking',
+  customRoads: Road[] = [],
+): RouteResult | null {
+  if (!customRoads || customRoads.length === 0) return null
+
+  // Filter roads by travel mode accessibility
+  const eligibleRoads = customRoads.filter((road) => {
+    if (!road.coordinates || road.coordinates.length < 2) return false
+    if (mode === 'driving' && road.category === 'pedestrian') return false
+    return true
+  })
+
+  if (eligibleRoads.length === 0) return null
+
+  const adj = new Map<string, GraphEdge[]>()
+  const nodeCoords = new Map<string, [number, number]>()
+  const nodeRoadMap = new Map<string, { name: string; category: string }>()
+
+  function addEdge(u: string, v: string, dist: number, roadName: string, roadCategory: string, isCustomRoad: boolean) {
+    if (!adj.has(u)) adj.set(u, [])
+    if (!adj.has(v)) adj.set(v, [])
+    adj.get(u)!.push({ node: v, dist, roadName, roadCategory, isCustomRoad })
+    adj.get(v)!.push({ node: u, dist, roadName, roadCategory, isCustomRoad })
+  }
+
+  nodeCoords.set('ORIGIN', origin)
+  nodeCoords.set('DEST', destination)
+
+  // 1. Build road geometry graph
+  eligibleRoads.forEach((road, rIdx) => {
+    const coords = road.coordinates || []
+    for (let i = 0; i < coords.length; i++) {
+      const u = `${rIdx}_${i}`
+      nodeCoords.set(u, coords[i])
+      nodeRoadMap.set(u, { name: road.name, category: road.category })
+      if (i > 0) {
+        const prev = `${rIdx}_${i - 1}`
+        const d = haversineDistance(coords[i - 1], coords[i])
+        addEdge(prev, u, d, road.name, road.category, true)
+      }
+    }
+  })
+
+  // 2. Connect touching or intersecting pathways (< 25m)
+  for (let r1 = 0; r1 < eligibleRoads.length; r1++) {
+    for (let r2 = r1 + 1; r2 < eligibleRoads.length; r2++) {
+      const c1 = eligibleRoads[r1].coordinates || []
+      const c2 = eligibleRoads[r2].coordinates || []
+      for (let i = 0; i < c1.length; i++) {
+        for (let j = 0; j < c2.length; j++) {
+          const d = haversineDistance(c1[i], c2[j])
+          if (d <= 25) {
+            addEdge(`${r1}_${i}`, `${r2}_${j}`, d, 'Intersection', 'transition', true)
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Connect ORIGIN to candidate road entry points (top 3 closest within 550m)
+  const originCandidates: { node: string; dist: number }[] = []
+  const destCandidates: { node: string; dist: number }[] = []
+
+  nodeCoords.forEach((coord, u) => {
+    if (u === 'ORIGIN' || u === 'DEST') return
+    const dOrig = haversineDistance(origin, coord)
+    originCandidates.push({ node: u, dist: dOrig })
+
+    const dDest = haversineDistance(destination, coord)
+    destCandidates.push({ node: u, dist: dDest })
+  })
+
+  originCandidates.sort((a, b) => a.dist - b.dist)
+  destCandidates.sort((a, b) => a.dist - b.dist)
+
+  originCandidates.slice(0, 3).forEach((c) => {
+    if (c.dist <= 550) {
+      const roadInfo = nodeRoadMap.get(c.node)
+      addEdge('ORIGIN', c.node, c.dist, roadInfo?.name || 'Campus Pathway', roadInfo?.category || 'walkway', false)
+    }
+  })
+
+  destCandidates.slice(0, 3).forEach((c) => {
+    if (c.dist <= 550) {
+      const roadInfo = nodeRoadMap.get(c.node)
+      addEdge(c.node, 'DEST', c.dist, roadInfo?.name || 'Destination', roadInfo?.category || 'walkway', false)
+    }
+  })
+
+  if (!adj.has('ORIGIN') || !adj.has('DEST')) return null
+
+  // 4. Dijkstra Shortest Path Search
+  const distances = new Map<string, number>()
+  const previous = new Map<string, { node: string; edge: GraphEdge }>()
+  const unvisited = new Set(nodeCoords.keys())
+
+  nodeCoords.forEach((_, key) => distances.set(key, Infinity))
+  distances.set('ORIGIN', 0)
+
+  while (unvisited.size > 0) {
+    let curr: string | null = null
+    let currDist = Infinity
+    for (const node of unvisited) {
+      const d = distances.get(node)!
+      if (d < currDist) {
+        currDist = d
+        curr = node
+      }
+    }
+
+    if (!curr || currDist === Infinity || curr === 'DEST') break
+    unvisited.delete(curr)
+
+    const neighbors = adj.get(curr) || []
+    for (const edge of neighbors) {
+      if (!unvisited.has(edge.node)) continue
+      const alt = currDist + edge.dist
+      if (alt < distances.get(edge.node)!) {
+        distances.set(edge.node, alt)
+        previous.set(edge.node, { node: curr, edge })
+      }
+    }
+  }
+
+  const destDist = distances.get('DEST')
+  if (!destDist || destDist === Infinity) return null
+
+  // 5. Reconstruct Path and Nodes
+  const pathNodes: string[] = []
+  const pathEdges: GraphEdge[] = []
+  let currNode = 'DEST'
+
+  while (currNode !== 'ORIGIN') {
+    pathNodes.unshift(currNode)
+    const prev = previous.get(currNode)
+    if (!prev) break
+    pathEdges.unshift(prev.edge)
+    currNode = prev.node
+  }
+  pathNodes.unshift('ORIGIN')
+
+  // Verify that the route actually traverses custom road segments
+  const usedCustomRoadEdges = pathEdges.filter((e) => e.isCustomRoad)
+  if (usedCustomRoadEdges.length === 0) return null
+
+  const usedRoadNames = Array.from(new Set(usedCustomRoadEdges.map((e) => e.roadName).filter((n) => n !== 'Intersection')))
+
+  // Calculate speed by mode
+  const speeds = {
+    walking: 1.35, // ~4.8 km/h -> 81 m/min
+    cycling: 4.2,  // ~15 km/h -> 252 m/min
+    driving: 7.0,  // ~25 km/h -> 420 m/min
+  }
+  const speed = speeds[mode] || 1.35
+
+  // 6. Generate Turn-by-Turn Steps
+  const steps: RouteStep[] = []
+  const fullCoordinates: [number, number][] = pathNodes.map((id) => nodeCoords.get(id)!)
+
+  // Initial step: Depart origin
+  const firstEdge = pathEdges[0]
+  steps.push({
+    instruction: `Head towards ${usedRoadNames[0] || 'Campus Pathway'}`,
+    distance: Math.round(firstEdge.dist),
+    duration: Math.round(firstEdge.dist / speed),
+    maneuverType: 'depart',
+  })
+
+  // Group consecutive edges along the same road
+  let currentRoad = ''
+  let currentRoadDist = 0
+
+  for (let i = 1; i < pathEdges.length; i++) {
+    const edge = pathEdges[i]
+    if (edge.node === 'DEST') {
+      if (currentRoadDist > 0) {
+        steps.push({
+          instruction: `Follow ${currentRoad} for ${Math.round(currentRoadDist)} m`,
+          distance: Math.round(currentRoadDist),
+          duration: Math.round(currentRoadDist / speed),
+          maneuverType: 'continue',
+        })
+      }
+      steps.push({
+        instruction: 'Turn towards destination',
+        distance: Math.round(edge.dist),
+        duration: Math.round(edge.dist / speed),
+        maneuverType: 'turn',
+      })
+      break
+    }
+
+    if (edge.isCustomRoad && edge.roadName !== 'Intersection') {
+      if (edge.roadName !== currentRoad) {
+        if (currentRoadDist > 0) {
+          steps.push({
+            instruction: `Follow ${currentRoad} for ${Math.round(currentRoadDist)} m`,
+            distance: Math.round(currentRoadDist),
+            duration: Math.round(currentRoadDist / speed),
+            maneuverType: 'continue',
+          })
+        }
+        currentRoad = edge.roadName
+        currentRoadDist = edge.dist
+        steps.push({
+          instruction: `Turn onto ${currentRoad} (${edge.roadCategory.replace('_', ' ')})`,
+          distance: 0,
+          duration: 0,
+          maneuverType: 'turn',
+        })
+      } else {
+        currentRoadDist += edge.dist
+      }
+    }
+  }
+
+  // Final step: Arrive
+  steps.push({
+    instruction: 'Arrive at destination',
+    distance: 0,
+    duration: 0,
+    maneuverType: 'arrive',
+  })
+
+  const totalDistance = Math.round(destDist)
+  const totalDurationMin = Math.max(1, Math.round(totalDistance / speed / 60))
+
+  return {
+    distance: totalDistance,
+    duration: totalDurationMin,
+    geometry: {
+      type: 'LineString',
+      coordinates: fullCoordinates,
+    },
+    steps,
+    isCampusShortcut: true,
+    shortcutRoadNames: usedRoadNames,
+  }
+}
+
 export async function fetchMapboxRoute(
   origin: [number, number],
   destination: [number, number],
   mode: 'walking' | 'cycling' | 'driving' = 'walking',
+  customRoads: Road[] = [],
 ): Promise<RouteResult> {
-  const profileMap = {
-    walking: 'walking',
-    cycling: 'cycling',
-    driving: 'driving',
-  }
-  const profile = profileMap[mode] || 'walking'
-  const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${origin[0]},${origin[1]};${destination[0]},${destination[1]}?steps=true&geometries=geojson&overview=full&access_token=${MAPBOX_PUBLIC_TOKEN}`
-
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error('Could not compute directions on campus')
-  }
-  const data = await res.json()
-  if (!data.routes || data.routes.length === 0) {
-    throw new Error('No route found between these locations')
+  // 1. Try finding an optimal route via custom campus roads network
+  let campusRoute: RouteResult | null = null
+  if (customRoads && customRoads.length > 0) {
+    try {
+      campusRoute = computeCampusRoadRoute(origin, destination, mode, customRoads)
+    } catch (err) {
+      console.warn('[OmniRoute] Campus road routing error:', err)
+    }
   }
 
-  const route = data.routes[0]
-  const steps: RouteStep[] = []
-  if (route.legs && route.legs[0] && route.legs[0].steps) {
-    route.legs[0].steps.forEach((step: any) => {
-      steps.push({
-        instruction: step.maneuver ? step.maneuver.instruction : 'Continue straight',
-        distance: Math.round(step.distance),
-        duration: Math.round(step.duration),
-        maneuverType: step.maneuver?.type,
-      })
-    })
+  // 2. Fetch standard Mapbox route
+  let mapboxRoute: RouteResult | null = null
+  try {
+    const profileMap = {
+      walking: 'walking',
+      cycling: 'cycling',
+      driving: 'driving',
+    }
+    const profile = profileMap[mode] || 'walking'
+    const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${origin[0]},${origin[1]};${destination[0]},${destination[1]}?steps=true&geometries=geojson&overview=full&access_token=${MAPBOX_PUBLIC_TOKEN}`
+
+    const res = await fetch(url)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0]
+        const steps: RouteStep[] = []
+        if (route.legs && route.legs[0] && route.legs[0].steps) {
+          route.legs[0].steps.forEach((step: any) => {
+            steps.push({
+              instruction: step.maneuver ? step.maneuver.instruction : 'Continue straight',
+              distance: Math.round(step.distance),
+              duration: Math.round(step.duration),
+              maneuverType: step.maneuver?.type,
+            })
+          })
+        }
+        mapboxRoute = {
+          distance: Math.round(route.distance),
+          duration: Math.round(route.duration / 60),
+          geometry: route.geometry,
+          steps,
+          isCampusShortcut: false,
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[OmniRoute] Mapbox directions fallback:', err)
   }
 
-  return {
-    distance: Math.round(route.distance),
-    duration: Math.round(route.duration / 60),
-    geometry: route.geometry,
-    steps,
+  // 3. Intelligent Selection:
+  if (campusRoute) {
+    // If Mapbox failed, or custom route is shorter / comparable shortcut, prioritize campus pathway
+    if (!mapboxRoute || campusRoute.distance <= mapboxRoute.distance * 1.1) {
+      return campusRoute
+    }
   }
+
+  if (mapboxRoute) {
+    return mapboxRoute
+  }
+
+  if (campusRoute) {
+    return campusRoute
+  }
+
+  throw new Error('Could not compute directions between these campus locations. Please check points or network.')
 }

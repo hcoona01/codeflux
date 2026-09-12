@@ -652,7 +652,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
 
     setRouteLoading(true)
     try {
-      const result = await fetchMapboxRoute(originCoords, destCoords, travelMode)
+      const result = await fetchMapboxRoute(originCoords, destCoords, travelMode, roads)
       setRouteResult(result)
       renderRouteOnMap(result.geometry, originCoords, destCoords)
     } catch (err: any) {
@@ -1334,6 +1334,20 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               {/* Route Summary Card & Turn-by-Turn Steps */}
               {routeResult && (
                 <div className="space-y-3 animate-fadeIn">
+                  {routeResult.isCampusShortcut && (
+                    <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200/90 px-3 py-2 text-xs font-semibold text-emerald-800 shadow-xs">
+                      <span className="text-base">✨</span>
+                      <div>
+                        <div className="font-bold">Optimized via Campus Pathway</div>
+                        {routeResult.shortcutRoadNames && routeResult.shortcutRoadNames.length > 0 && (
+                          <div className="text-[10px] text-emerald-700 font-medium">
+                            Traversing: {routeResult.shortcutRoadNames.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 p-4 text-white shadow-md">
                     <div>
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-white/80">
