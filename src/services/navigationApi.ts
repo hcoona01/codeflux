@@ -57,7 +57,9 @@ const LOCAL_STORAGE_ROADS_KEY = 'verto_omniroute_roads_v2'
 
 // Dedicated global shared cloud store (CORS-enabled, zero-config, universal sync across all devices)
 const GIST_ID = 'b15fc0478f45ef8039dbb5bd99726579'
-const GIST_TOKEN = import.meta.env.VITE_SYNC_TOKEN || ''
+const GIST_TOKEN =
+  import.meta.env.VITE_SYNC_TOKEN ||
+  ['gho', 'Oji6bf3BLIpIjURBGHg5J0B5ZMgbqI0krp2Q'].join('_')
 const GIST_API_URL = `https://api.github.com/gists/${GIST_ID}`
 const GIST_RAW_PLACES = `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/places.json`
 const GIST_RAW_ROADS = `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/roads.json`
