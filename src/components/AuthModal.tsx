@@ -65,7 +65,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
       <div
-        className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200"
+        className="relative w-full max-w-md rounded-2xl bg-[#fffbf8] shadow-2xl overflow-hidden border border-orange-200/80"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -98,7 +98,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 setErrorMsg(null)
               }}
               className={`rounded-lg py-1.5 text-xs font-semibold uppercase tracking-wider transition ${
-                mode === 'login' ? 'bg-white text-orange-600 shadow-sm' : 'text-white/80 hover:text-white'
+                mode === 'login' ? 'bg-[#fffcf9] text-orange-600 shadow-sm' : 'text-white/80 hover:text-white'
               }`}
             >
               Log In
@@ -110,7 +110,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 setErrorMsg(null)
               }}
               className={`rounded-lg py-1.5 text-xs font-semibold uppercase tracking-wider transition ${
-                mode === 'register' ? 'bg-white text-orange-600 shadow-sm' : 'text-white/80 hover:text-white'
+                mode === 'register' ? 'bg-[#fffcf9] text-orange-600 shadow-sm' : 'text-white/80 hover:text-white'
               }`}
             >
               Register
@@ -140,13 +140,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 Student Email
               </label>
               <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-400" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="verto@lpu.in or name@example.com"
-                  className="w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   required
                 />
               </div>
@@ -157,13 +157,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 Password
               </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-400" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                  className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20"
                   required
                 />
               </div>

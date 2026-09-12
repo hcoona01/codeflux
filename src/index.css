@@ -7,6 +7,8 @@ body,
   height: 100%;
   overflow: hidden;
   font-family: 'Inter', sans-serif;
+  background-color: #fffaf5;
+  color: #0f172a;
 }
 
 @keyframes grain-shift {

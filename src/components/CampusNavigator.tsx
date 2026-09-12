@@ -952,7 +952,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
 
   return (
     <div
-      className={`relative flex h-screen w-full flex-col overflow-hidden bg-slate-100 transition-all duration-500 ease-out ${
+      className={`relative flex h-screen w-full flex-col overflow-hidden bg-[#fff8f2] text-slate-900 transition-all duration-500 ease-out ${
         pageVisible && !isExiting ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       }`}
       style={{ fontFamily: 'Inter, sans-serif' }}
@@ -972,28 +972,28 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
       <div className="relative flex flex-1 overflow-hidden">
         {/* Left Interactive Sidebar (Responsive: floating sheet on mobile, fixed panel on desktop) */}
         <aside
-          className={`absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-slate-200 bg-white/95 backdrop-blur-md shadow-2xl transition-all duration-300 sm:relative sm:inset-auto sm:h-full sm:w-[420px] sm:border-r sm:border-t-0 ${
+          className={`absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-orange-200/50 bg-[#fffbf8]/95 backdrop-blur-md shadow-2xl transition-all duration-300 sm:relative sm:inset-auto sm:h-full sm:w-[420px] sm:border-r sm:border-t-0 sm:border-orange-200/50 ${
             mobileDrawerOpen ? 'h-[75vh] sm:h-full' : 'h-16 sm:h-full'
           }`}
         >
           {/* Mobile Drawer Drag Handle & Toggle */}
-          <div className="flex sm:hidden items-center justify-between border-b border-slate-100 px-4 py-2 bg-slate-50">
+          <div className="flex sm:hidden items-center justify-between border-b border-orange-200/40 px-4 py-2 bg-[#fff4eb]/80">
             <div className="flex items-center gap-2">
-              <span className="h-1.5 w-10 rounded-full bg-slate-300" />
+              <span className="h-1.5 w-10 rounded-full bg-orange-300" />
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 {activeTab}
               </span>
             </div>
             <button
               onClick={() => setMobileDrawerOpen(!mobileDrawerOpen)}
-              className="rounded-lg p-1 text-slate-500 hover:bg-slate-200 cursor-pointer"
+              className="rounded-lg p-1 text-slate-500 hover:bg-orange-100 cursor-pointer"
             >
               {mobileDrawerOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </button>
           </div>
 
           {/* Feature Navigation Tabs */}
-          <div className="grid grid-cols-3 border-b border-slate-200/80 bg-slate-50/80 p-1.5 gap-1 shrink-0">
+          <div className="grid grid-cols-3 border-b border-orange-200/50 bg-[#fff5ec]/80 p-1.5 gap-1 shrink-0">
             <button
               onClick={() => {
                 setActiveTab('explore')
@@ -1001,8 +1001,8 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               }}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
                 activeTab === 'explore'
-                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
               }`}
             >
               <Compass className="h-4 w-4" />
@@ -1016,8 +1016,8 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               }}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
                 activeTab === 'directions'
-                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
               }`}
             >
               <NavIcon className="h-4 w-4" />
@@ -1031,8 +1031,8 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               }}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
                 activeTab === 'contribute'
-                  ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
               }`}
             >
               <PlusCircle className="h-4 w-4" />
@@ -1045,13 +1045,13 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
             <div className="flex flex-1 flex-col overflow-hidden p-3 sm:p-4">
               {/* Search Bar */}
               <div className="relative mb-3">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search campus blocks, labs, cafes..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20 shadow-xs"
+                  className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2.5 pl-9 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20 shadow-xs"
                 />
               </div>
 
@@ -1064,7 +1064,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                     className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
                       categoryFilter === cat
                         ? 'bg-orange-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        : 'bg-[#fff3e8] border border-orange-200/60 text-slate-700 hover:bg-orange-100/80'
                     }`}
                   >
                     {cat.replace('_', ' ')}
@@ -1075,7 +1075,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               {/* Places List */}
               <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
                 {filteredPlaces.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">
+                  <div className="rounded-xl border border-dashed border-orange-200/80 bg-[#fff9f4]/60 p-8 text-center text-xs text-slate-500">
                     No places found matching "{searchQuery}".
                   </div>
                 ) : (
@@ -1085,13 +1085,13 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       onClick={() => handleFocusPlace(place)}
                       className={`group rounded-xl border p-3 transition-all cursor-pointer ${
                         selectedPlace?.id === place.id
-                          ? 'border-orange-500 bg-orange-50/50 shadow-sm ring-1 ring-orange-400/40'
-                          : 'border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-sm'
+                          ? 'border-orange-500 bg-orange-50/80 shadow-sm ring-1 ring-orange-400/40'
+                          : 'border-orange-200/60 bg-[#fffcf9] hover:border-orange-300 hover:bg-white hover:shadow-xs'
                       }`}
                     >
                       <div className="flex gap-3">
                         {place.image_url && (
-                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-orange-100/40 border border-orange-100">
                             <img
                               src={place.image_url}
                               alt={place.name}
@@ -1114,19 +1114,19 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                           <h4 className="font-bold text-xs text-slate-900 truncate">
                             {place.name}
                           </h4>
-                          <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-relaxed">
+                          <p className="text-[11px] text-slate-600 line-clamp-2 mt-0.5 leading-relaxed">
                             {place.description}
                           </p>
                         </div>
                       </div>
 
-                      <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-[11px]">
+                      <div className="mt-2.5 flex items-center justify-between border-t border-orange-100/80 pt-2 text-[11px]">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             handleStartEditPlace(place)
                           }}
-                          className="flex items-center gap-1 font-semibold text-slate-500 hover:text-orange-600 transition cursor-pointer"
+                          className="flex items-center gap-1 font-semibold text-slate-600 hover:text-orange-600 transition cursor-pointer"
                           title="Correct inaccurate coordinates or details"
                         >
                           <Edit3 className="h-3 w-3 text-slate-400 group-hover:text-orange-500" />
@@ -1155,13 +1155,13 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           {activeTab === 'directions' && (
             <div className="flex flex-1 flex-col overflow-y-auto p-3 sm:p-4">
               {/* Travel Mode Chips */}
-              <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1 mb-3">
+              <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-[#fff3e8] border border-orange-200/50 p-1 mb-3">
                 <button
                   type="button"
                   onClick={() => setTravelMode('walking')}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
                     travelMode === 'walking'
-                      ? 'bg-white text-orange-600 shadow-xs'
+                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1173,7 +1173,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   onClick={() => setTravelMode('cycling')}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
                     travelMode === 'cycling'
-                      ? 'bg-white text-orange-600 shadow-xs'
+                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1185,7 +1185,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   onClick={() => setTravelMode('driving')}
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
                     travelMode === 'driving'
-                      ? 'bg-white text-orange-600 shadow-xs'
+                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1195,18 +1195,18 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               </div>
 
               {/* Origin & Destination Pickers */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 mb-3">
+              <div className="rounded-2xl border border-orange-200/70 bg-[#fff9f4]/90 p-3 mb-3">
                 {/* Origin */}
                 <div className="flex items-center gap-2 mb-2">
                   <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
                   <div className="flex-1">
-                    <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-0.5">
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-0.5">
                       Starting Point
                     </label>
                     <select
                       value={originId}
                       onChange={(e) => setOriginId(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2 text-xs font-semibold text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-lg border border-orange-200/80 bg-[#fffcf9] py-1.5 px-2 text-xs font-semibold text-slate-800 focus:border-orange-500 focus:outline-none"
                     >
                       <option value="gps">📍 My Current Location (GPS)</option>
                       {places.map((p) => (
@@ -1223,7 +1223,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   <button
                     type="button"
                     onClick={handleSwapRoute}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-orange-600 transition shadow-xs cursor-pointer"
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-orange-200/80 bg-[#fffcf9] text-slate-500 hover:bg-orange-50 hover:text-orange-600 transition shadow-xs cursor-pointer"
                     title="Swap Start and Destination"
                   >
                     <ArrowUpDown className="h-3.5 w-3.5" />
@@ -1234,13 +1234,13 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                 <div className="flex items-center gap-2 mt-2">
                   <div className="h-2.5 w-2.5 rounded-full bg-orange-600 ring-4 ring-orange-100 shrink-0" />
                   <div className="flex-1">
-                    <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-0.5">
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-0.5">
                       Destination
                     </label>
                     <select
                       value={destinationId}
                       onChange={(e) => setDestinationId(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2 text-xs font-semibold text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-lg border border-orange-200/80 bg-[#fffcf9] py-1.5 px-2 text-xs font-semibold text-slate-800 focus:border-orange-500 focus:outline-none"
                     >
                       {places.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1275,7 +1275,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                 {routeResult && (
                   <button
                     onClick={handleClearRoute}
-                    className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                    className="flex items-center justify-center rounded-xl border border-orange-200/80 bg-[#fffcf9] px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-orange-50 transition cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1320,7 +1320,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       {routeResult.steps.map((step, idx) => (
                         <div
                           key={idx}
-                          className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-2.5 text-xs text-slate-800"
+                          className="flex items-start gap-2.5 rounded-xl border border-orange-200/60 bg-[#fffcf9] p-2.5 text-xs text-slate-800"
                         >
                           <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600 font-bold text-[10px]">
                             {idx + 1}
@@ -1344,13 +1344,13 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           {activeTab === 'contribute' && (
             <div className="flex flex-1 flex-col overflow-y-auto p-3 sm:p-4">
               {/* Sub-tab Switcher: Add Place vs Fix Location vs Draw Road */}
-              <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1 mb-3">
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#fff3e8] border border-orange-200/50 p-1 mb-3">
                 <button
                   type="button"
                   onClick={() => setContributeMode('place')}
                   className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
                     contributeMode === 'place'
-                      ? 'bg-white text-orange-600 shadow-xs'
+                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1361,7 +1361,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   onClick={() => setContributeMode('update')}
                   className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
                     contributeMode === 'update'
-                      ? 'bg-white text-orange-600 shadow-xs'
+                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1372,7 +1372,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   onClick={() => setContributeMode('road')}
                   className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
                     contributeMode === 'road'
-                      ? 'bg-white text-orange-600 shadow-xs'
+                      ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1382,7 +1382,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
 
               {/* Auth Notice if guest */}
               {!currentUser && (
-                <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-xs text-orange-900">
+                <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50/90 p-3 text-xs text-orange-900">
                   <div className="font-bold flex items-center gap-1.5 mb-1 text-orange-700">
                     <AlertTriangle className="h-4 w-4" />
                     <span>Student Login Recommended</span>
@@ -1409,7 +1409,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                     </div>
                   )}
 
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+                  <div className="rounded-xl border border-orange-200/70 bg-[#fff5ec] p-2.5 text-xs text-slate-700">
                     💡 <b>Tip:</b> Click anywhere on the map to automatically pick Latitude and Longitude coordinates.
                   </div>
 
@@ -1422,7 +1422,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       value={newPlaceName}
                       onChange={(e) => setNewPlaceName(e.target.value)}
                       placeholder="e.g. Block 36 Robotics Lab"
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                       required
                     />
                   </div>
@@ -1434,7 +1434,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                     <select
                       value={newPlaceCategory}
                       onChange={(e) => setNewPlaceCategory(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                     >
                       <option value="academic">Academic Block / Lab</option>
                       <option value="library">Library / Study Zone</option>
@@ -1455,7 +1455,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       onChange={(e) => setNewPlaceDesc(e.target.value)}
                       rows={2}
                       placeholder="Floor number, nearby gates, landmarks..."
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                     />
                   </div>
 
@@ -1469,7 +1469,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                         value={newPlaceLat}
                         onChange={(e) => setNewPlaceLat(e.target.value)}
                         placeholder="31.25..."
-                        className="w-full rounded-xl border border-slate-300 bg-white py-1.5 px-2 text-xs font-mono text-slate-800"
+                        className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-1.5 px-2 text-xs font-mono text-slate-800"
                         required
                       />
                     </div>
@@ -1482,7 +1482,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                         value={newPlaceLng}
                         onChange={(e) => setNewPlaceLng(e.target.value)}
                         placeholder="75.70..."
-                        className="w-full rounded-xl border border-slate-300 bg-white py-1.5 px-2 text-xs font-mono text-slate-800"
+                        className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-1.5 px-2 text-xs font-mono text-slate-800"
                         required
                       />
                     </div>
@@ -1496,7 +1496,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       type="file"
                       accept="image/*"
                       onChange={(e) => setNewPlaceFile(e.target.files ? e.target.files[0] : null)}
-                      className="w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-orange-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-orange-700 hover:file:bg-orange-100"
+                      className="w-full text-xs text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100/70 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-orange-800 hover:file:bg-orange-200/70 cursor-pointer"
                     />
                   </div>
 
@@ -1513,7 +1513,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
               {/* Subpanel 2: Fix / Update Existing Location */}
               {contributeMode === 'update' && (
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+                  <div className="rounded-xl border border-orange-200/70 bg-[#fff5ec] p-2.5 text-xs text-slate-700">
                     🎯 <b>Fix inaccurate landmarks:</b> Select any campus location below to adjust its coordinates, name, or description.
                   </div>
 
@@ -1527,7 +1527,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                         const p = places.find((item) => item.id === e.target.value)
                         if (p) handleStartEditPlace(p)
                       }}
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                     >
                       <option value="" disabled>-- Select a campus landmark --</option>
                       {places.map((p) => (
@@ -1539,7 +1539,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   </div>
 
                   {editingPlace ? (
-                    <form onSubmit={handleSaveEditedPlace} className="space-y-3 pt-2 border-t border-slate-100">
+                    <form onSubmit={handleSaveEditedPlace} className="space-y-3 pt-2 border-t border-orange-100">
                       {editSuccessMsg && (
                         <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800">
                           <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -1562,7 +1562,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                           type="text"
                           value={editPlaceName}
                           onChange={(e) => setEditPlaceName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                          className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                           required
                         />
                       </div>
@@ -1574,7 +1574,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                         <select
                           value={editPlaceCategory}
                           onChange={(e) => setEditPlaceCategory(e.target.value)}
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                          className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                         >
                           <option value="academic">Academic Block / Lab</option>
                           <option value="library">Library / Study Zone</option>
@@ -1587,7 +1587,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       </div>
 
                       {/* Map picker tools */}
-                      <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-2.5 space-y-2">
+                      <div className="rounded-xl border border-orange-200/90 bg-[#fff5ec]/80 p-2.5 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-bold text-orange-900 flex items-center gap-1">
                             <Crosshair className="h-3 w-3 text-orange-600" />
@@ -1603,7 +1603,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                             className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${
                               isPickingLocation
                                 ? 'bg-orange-600 text-white shadow-xs'
-                                : 'bg-white border border-orange-300 text-orange-700 hover:bg-orange-100'
+                                : 'bg-[#fffcf9] border border-orange-300 text-orange-800 hover:bg-orange-100'
                             }`}
                           >
                             {isPickingLocation ? '🎯 Map Click Active' : 'Click Map to Pick'}
@@ -1616,7 +1616,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                                 setEditPlaceLng(currentGps[0].toFixed(6))
                                 setEditPlaceLat(currentGps[1].toFixed(6))
                               }}
-                              className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                              className="rounded-lg bg-[#fffcf9] border border-orange-200/80 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-orange-50 transition cursor-pointer"
                             >
                               📍 My GPS
                             </button>
@@ -1626,7 +1626,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                             <button
                               type="button"
                               onClick={handleResetToOriginalCoords}
-                              className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                              className="rounded-lg bg-[#fffcf9] border border-orange-200/80 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-orange-50 transition cursor-pointer"
                               title="Restore factory default coordinates"
                             >
                               ↺ Reset Default
@@ -1642,7 +1642,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                               step="any"
                               value={editPlaceLat}
                               onChange={(e) => setEditPlaceLat(e.target.value)}
-                              className="w-full rounded-lg border border-slate-300 bg-white py-1 px-2 text-xs font-mono text-slate-800"
+                              className="w-full rounded-lg border border-orange-200/80 bg-[#fffcf9] py-1 px-2 text-xs font-mono text-slate-800"
                               required
                             />
                           </div>
@@ -1653,7 +1653,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                               step="any"
                               value={editPlaceLng}
                               onChange={(e) => setEditPlaceLng(e.target.value)}
-                              className="w-full rounded-lg border border-slate-300 bg-white py-1 px-2 text-xs font-mono text-slate-800"
+                              className="w-full rounded-lg border border-orange-200/80 bg-[#fffcf9] py-1 px-2 text-xs font-mono text-slate-800"
                               required
                             />
                           </div>
@@ -1668,7 +1668,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                           rows={2}
                           value={editPlaceDesc}
                           onChange={(e) => setEditPlaceDesc(e.target.value)}
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                          className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                         />
                       </div>
 
@@ -1676,7 +1676,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                         <button
                           type="button"
                           onClick={handleCloseEditPlace}
-                          className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                          className="flex-1 rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 text-xs font-semibold text-slate-600 hover:bg-orange-50 transition cursor-pointer"
                         >
                           Cancel
                         </button>
@@ -1690,7 +1690,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       </div>
                     </form>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+                    <div className="rounded-xl border border-dashed border-orange-200/80 bg-[#fff9f4]/60 p-6 text-center text-xs text-slate-500">
                       Please choose a location above or click <b>"✏️ Fix Location"</b> on any map pin or Explore card to begin editing.
                     </div>
                   )}
@@ -1707,7 +1707,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                     </div>
                   )}
 
-                  <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">
+                  <div className="rounded-xl border border-teal-200 bg-teal-50/80 p-3 text-xs text-teal-900">
                     <div className="font-bold mb-1">🛣️ Drawing Mode Active:</div>
                     <p className="leading-relaxed mb-2">
                       Click along the path on the map to add connected waypoints.
@@ -1723,7 +1723,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       type="button"
                       onClick={() => setDrawnPoints((prev) => prev.slice(0, -1))}
                       disabled={drawnPoints.length === 0}
-                      className="flex-1 flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center gap-1 rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 text-xs font-semibold text-slate-700 hover:bg-orange-50 transition cursor-pointer disabled:opacity-50"
                     >
                       <RotateCcw className="h-3.5 w-3.5" /> Undo Point
                     </button>
@@ -1731,7 +1731,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       type="button"
                       onClick={() => setDrawnPoints([])}
                       disabled={drawnPoints.length === 0}
-                      className="flex-1 flex items-center justify-center gap-1 rounded-xl border border-red-200 bg-red-50 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 transition cursor-pointer disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center gap-1 rounded-xl border border-red-200/80 bg-[#fff5ec] py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer disabled:opacity-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> Clear
                     </button>
@@ -1746,7 +1746,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       value={newRoadName}
                       onChange={(e) => setNewRoadName(e.target.value)}
                       placeholder="e.g. UniMall to Block 32 Walkway"
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                       required
                     />
                   </div>
@@ -1758,7 +1758,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                     <select
                       value={newRoadCategory}
                       onChange={(e) => setNewRoadCategory(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                     >
                       <option value="walkway">🚶 Pedestrian Walkway</option>
                       <option value="bike_lane">🚴 Bicycle Lane</option>
@@ -1776,7 +1776,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                       onChange={(e) => setNewRoadDesc(e.target.value)}
                       rows={2}
                       placeholder="Lighting, shade, accessibility notes..."
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-xl border border-orange-200/80 bg-[#fffcf9] py-2 px-3 text-xs text-slate-800 focus:border-orange-500 focus:bg-white focus:outline-none"
                     />
                   </div>
 
@@ -1801,7 +1801,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           <div className="absolute top-4 left-4 z-10 flex gap-2">
             <button
               onClick={toggleMapStyle}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-bold text-slate-800 shadow-lg backdrop-blur-md hover:bg-white hover:text-orange-600 transition cursor-pointer"
+              className="flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fffbf8]/95 px-3 py-2 text-xs font-bold text-slate-800 shadow-lg backdrop-blur-md hover:bg-white hover:text-orange-600 transition cursor-pointer"
             >
               <Layers className="h-3.5 w-3.5" />
               <span>{isSatellite ? 'Streets View' : 'Satellite View'}</span>
@@ -1816,7 +1816,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                 <span>Click anywhere on the map or drag 🎯 pin</span>
               </div>
 
-              <div className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur-md w-full">
+              <div className="flex items-center justify-between gap-2 rounded-2xl border border-orange-200/80 bg-[#fffbf8]/95 p-3 shadow-2xl backdrop-blur-md w-full">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 font-bold text-sm">
                     🎯
@@ -1839,7 +1839,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                         setEditPlaceLng(currentGps[0].toFixed(6))
                         setEditPlaceLat(currentGps[1].toFixed(6))
                       }}
-                      className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                      className="rounded-xl border border-orange-200/80 bg-[#fff5ec] px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-orange-100/70 transition cursor-pointer"
                       title="Use live GPS location"
                     >
                       📍 GPS
@@ -1849,7 +1849,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
                   <button
                     type="button"
                     onClick={handleCloseEditPlace}
-                    className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    className="rounded-xl border border-orange-200/80 bg-[#fff5ec] px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-orange-100/70 transition cursor-pointer"
                   >
                     Cancel
                   </button>
