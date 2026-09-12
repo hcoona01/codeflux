@@ -1,6 +1,8 @@
 // Voice Guidance & Speech Synthesis Service for Verto Guide
+// Configured with a youthful male kid persona (higher pitch, energetic boy pacing)
 
 let currentUtterance: SpeechSynthesisUtterance | null = null
+let cachedVoice: SpeechSynthesisVoice | null = null
 
 export function isSpeechSynthesisSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
@@ -21,28 +23,78 @@ export function stopSpeaking(): void {
   currentUtterance = null
 }
 
-export function getPreferredVoice(): SpeechSynthesisVoice | null {
+function findMaleKidVoice(): SpeechSynthesisVoice | null {
   if (!isSpeechSynthesisSupported()) return null
   const voices = window.speechSynthesis.getVoices()
   if (!voices || voices.length === 0) return null
 
-  // Prioritize high-clarity friendly English voices
-  const preferred = voices.find(
-    (v) =>
-      v.lang.startsWith('en') &&
-      (v.name.includes('Google') ||
-        v.name.includes('Natural') ||
-        v.name.includes('Samantha') ||
-        v.name.includes('Karen') ||
-        v.name.includes('Daniel') ||
-        v.name.includes('Zira')),
-  )
+  // Prioritize male English voices (which pitch-shift into a vibrant kid voice)
+  const maleKeywords = [
+    'guy',
+    'natural male',
+    'male',
+    'mark',
+    'david',
+    'daniel',
+    'george',
+    'ryan',
+    'alex',
+    'oliver',
+    'christopher',
+    'eric',
+    'fred',
+    'james',
+    'liam',
+  ]
+  const femaleKeywords = [
+    'female',
+    'zira',
+    'samantha',
+    'karen',
+    'jenny',
+    'aria',
+    'susan',
+    'victoria',
+    'eva',
+    'hazel',
+    'heera',
+    'helena',
+    'catherine',
+  ]
 
-  if (preferred) return preferred
+  const englishVoices = voices.filter((v) => v.lang.startsWith('en'))
 
-  // Fallback to any English voice
-  const englishVoice = voices.find((v) => v.lang.startsWith('en'))
-  return englishVoice || voices[0] || null
+  // 1. First priority: Specifically male English voices
+  const preferredMale = englishVoices.find((v) => {
+    const name = v.name.toLowerCase()
+    const isFemale = femaleKeywords.some((f) => name.includes(f))
+    if (isFemale) return false
+    return maleKeywords.some((m) => name.includes(m))
+  })
+  if (preferredMale) return preferredMale
+
+  // 2. Second priority: Any English voice that is NOT identified as female
+  const nonFemale = englishVoices.find((v) => {
+    const name = v.name.toLowerCase()
+    return !femaleKeywords.some((f) => name.includes(f))
+  })
+  if (nonFemale) return nonFemale
+
+  // 3. Fallback to any English voice
+  return englishVoices[0] || voices[0] || null
+}
+
+// Pre-load voices on browser ready
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    cachedVoice = findMaleKidVoice()
+  }
+}
+
+export function getPreferredVoice(): SpeechSynthesisVoice | null {
+  if (cachedVoice) return cachedVoice
+  cachedVoice = findMaleKidVoice()
+  return cachedVoice
 }
 
 export interface SpeakOptions {
@@ -59,12 +111,12 @@ export function speakText(text: string, options: SpeakOptions = {}): boolean {
 
   stopSpeaking()
 
-  // Clean up any markup or messy punctuation
+  // Clean up any markup or messy punctuation for natural kid speech
   const cleanText = text
     .replace(/<[^>]*>/g, '')
-    .replace(/m\b/g, 'meters')
-    .replace(/km\b/g, 'kilometers')
-    .replace(/min\b/g, 'minutes')
+    .replace(/\bm\b/g, 'meters')
+    .replace(/\bkm\b/g, 'kilometers')
+    .replace(/\bmin\b/g, 'minutes')
     .trim()
 
   if (!cleanText) return false
@@ -77,8 +129,11 @@ export function speakText(text: string, options: SpeakOptions = {}): boolean {
     utterance.voice = voice
   }
 
-  utterance.rate = options.rate ?? 1.02
-  utterance.pitch = options.pitch ?? 1.05 // slightly friendly & upbeat
+  // Kid voice parameters:
+  // - pitch: 1.45 (higher pitch gives a natural, cheerful young boy/kid persona)
+  // - rate: 1.10 (lively, energetic pacing characteristic of an enthusiastic kid guide)
+  utterance.pitch = options.pitch ?? 1.45
+  utterance.rate = options.rate ?? 1.10
   utterance.volume = options.volume ?? 1.0
 
   utterance.onstart = () => {
@@ -120,14 +175,14 @@ export function buildRouteStartSpeech(
   isCampusShortcut?: boolean,
 ): string {
   const formattedDist = formatDistanceForSpeech(distanceMeters)
-  let speech = `Starting navigation to ${destName}. The route is approximately ${formattedDist}, estimated at ${durationMinutes} minutes.`
+  let speech = `Hey! Starting navigation to ${destName}! The route is about ${formattedDist}, and should take around ${durationMinutes} minutes!`
 
   if (isCampusShortcut) {
-    speech += ` I've mapped an optimized campus shortcut for you.`
+    speech += ` Awesome, I found a campus shortcut for you!`
   }
 
   if (firstStepInstruction) {
-    speech += ` To begin, ${firstStepInstruction}.`
+    speech += ` First, ${firstStepInstruction}.`
   }
 
   return speech
@@ -135,5 +190,5 @@ export function buildRouteStartSpeech(
 
 export function buildStepSpeech(stepIndex: number, totalSteps: number, instruction: string, distanceMeters: number): string {
   const formattedDist = formatDistanceForSpeech(distanceMeters)
-  return `Step ${stepIndex + 1} of ${totalSteps}. In ${formattedDist}, ${instruction}.`
+  return `Step ${stepIndex + 1} of ${totalSteps}! In ${formattedDist}, ${instruction}.`
 }

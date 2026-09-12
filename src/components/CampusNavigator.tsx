@@ -880,7 +880,7 @@ export default function CampusNavigator({
       setActiveSpeechStepIdx(null)
     } else {
       const greeting =
-        "Voice guidance activated. I'm ready to accurately guide you around campus!"
+        "Hey! Voice guidance is on! I'm ready to guide you around campus!"
       setGuideSpeakingText(greeting)
       speakText(greeting, {
         onStart: () => setIsGuideSpeaking(true),
