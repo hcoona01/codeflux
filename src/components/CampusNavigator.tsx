@@ -221,8 +221,8 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
       style: 'mapbox://styles/mapbox/streets-v12',
       center: LPU_CENTER_COORDS,
       zoom: 16,
-      pitch: 40,
-      bearing: -15,
+      pitch: 0,
+      bearing: 0,
       attributionControl: false,
     })
 
@@ -383,67 +383,88 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     places.forEach((place) => {
       const color = CATEGORY_COLORS[place.category] || '#ea580c'
 
-      // Custom marker DOM element container positioned by Mapbox GL
+      // Custom marker DOM element container with exact bottom anchor
       const el = document.createElement('div')
-      el.className = 'campus-pin-marker-container'
-      el.style.position = 'relative'
-      el.style.width = '32px'
-      el.style.height = '32px'
+      el.className = 'campus-pin-marker-container group'
+      el.style.display = 'flex'
+      el.style.flexDirection = 'column'
+      el.style.alignItems = 'center'
       el.style.cursor = 'pointer'
       el.style.userSelect = 'none'
+      el.style.pointerEvents = 'auto'
 
-      // Inner pin icon (scales on hover without affecting Mapbox's translate transform on el)
-      const pin = document.createElement('div')
-      pin.className = 'campus-pin-marker'
-      pin.style.width = '32px'
-      pin.style.height = '32px'
-      pin.style.borderRadius = '50%'
-      pin.style.backgroundColor = color
-      pin.style.border = '2px solid #ffffff'
-      pin.style.boxShadow = '0 3px 12px rgba(0,0,0,0.25)'
-      pin.style.display = 'flex'
-      pin.style.alignItems = 'center'
-      pin.style.justifyContent = 'center'
-      pin.style.color = '#ffffff'
-      pin.style.fontSize = '15px'
-      pin.style.transition = 'transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease'
-      pin.innerHTML = CATEGORY_ICONS[place.category] || '📍'
-
-      // Floating location name tag
+      // 1. Floating location name tag (positioned directly ABOVE the pin)
       const tag = document.createElement('div')
       tag.className = 'campus-pin-tag'
       tag.textContent = place.name
-      tag.style.position = 'absolute'
-      tag.style.top = '36px'
-      tag.style.left = '50%'
-      tag.style.transform = 'translateX(-50%)'
       tag.style.padding = '2px 8px'
-      tag.style.borderRadius = '10px'
-      tag.style.backgroundColor = 'rgba(15, 23, 42, 0.88)'
+      tag.style.borderRadius = '8px'
+      tag.style.backgroundColor = 'rgba(15, 23, 42, 0.92)'
       tag.style.backdropFilter = 'blur(4px)'
       tag.style.color = '#ffffff'
       tag.style.fontSize = '11px'
-      tag.style.fontWeight = '600'
+      tag.style.fontWeight = '700'
       tag.style.whiteSpace = 'nowrap'
       tag.style.pointerEvents = 'none'
-      tag.style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)'
+      tag.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)'
+      tag.style.border = '1px solid rgba(255,255,255,0.18)'
+      tag.style.marginBottom = '2px'
       tag.style.transition = 'transform 0.18s ease, background-color 0.18s ease'
 
-      el.appendChild(pin)
-      el.appendChild(tag)
+      // 2. Pin Pinpoint Body (Circular Head + Sharp Needle Tip pointing directly to the ground coordinate)
+      const pinWrapper = document.createElement('div')
+      pinWrapper.className = 'campus-pin-wrapper'
+      pinWrapper.style.position = 'relative'
+      pinWrapper.style.display = 'flex'
+      pinWrapper.style.flexDirection = 'column'
+      pinWrapper.style.alignItems = 'center'
+      pinWrapper.style.transition = 'transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)'
 
-      // Hover scaling applied exclusively to inner elements
+      // 2a. Pin Head Circle
+      const pinHead = document.createElement('div')
+      pinHead.className = 'campus-pin-head'
+      pinHead.style.width = '30px'
+      pinHead.style.height = '30px'
+      pinHead.style.borderRadius = '50%'
+      pinHead.style.backgroundColor = color
+      pinHead.style.border = '2.5px solid #ffffff'
+      pinHead.style.boxShadow = '0 3px 10px rgba(0,0,0,0.35)'
+      pinHead.style.display = 'flex'
+      pinHead.style.alignItems = 'center'
+      pinHead.style.justifyContent = 'center'
+      pinHead.style.color = '#ffffff'
+      pinHead.style.fontSize = '14px'
+      pinHead.style.zIndex = '2'
+      pinHead.innerHTML = CATEGORY_ICONS[place.category] || '📍'
+
+      // 2b. Pin Needle Point (Sharp tip points to exact ground coordinate [0, 0])
+      const pinNeedle = document.createElement('div')
+      pinNeedle.className = 'campus-pin-needle'
+      pinNeedle.style.width = '0'
+      pinNeedle.style.height = '0'
+      pinNeedle.style.borderLeft = '6px solid transparent'
+      pinNeedle.style.borderRight = '6px solid transparent'
+      pinNeedle.style.borderTop = `8px solid ${color}`
+      pinNeedle.style.marginTop = '-3px'
+      pinNeedle.style.zIndex = '1'
+      pinNeedle.style.filter = 'drop-shadow(0 2px 2px rgba(0,0,0,0.3))'
+
+      pinWrapper.appendChild(pinHead)
+      pinWrapper.appendChild(pinNeedle)
+
+      el.appendChild(tag)
+      el.appendChild(pinWrapper)
+
+      // Hover scaling applied exclusively to pin wrapper without shifting anchor point
       el.addEventListener('mouseenter', () => {
-        pin.style.transform = 'scale(1.2)'
-        pin.style.boxShadow = '0 6px 18px rgba(0,0,0,0.45)'
-        tag.style.transform = 'translateX(-50%) scale(1.05)'
+        pinWrapper.style.transform = 'scale(1.2) translateY(-2px)'
+        tag.style.transform = 'scale(1.06)'
         tag.style.backgroundColor = 'rgba(15, 23, 42, 0.98)'
       })
       el.addEventListener('mouseleave', () => {
-        pin.style.transform = 'scale(1)'
-        pin.style.boxShadow = '0 3px 12px rgba(0,0,0,0.25)'
-        tag.style.transform = 'translateX(-50%) scale(1)'
-        tag.style.backgroundColor = 'rgba(15, 23, 42, 0.88)'
+        pinWrapper.style.transform = 'scale(1) translateY(0)'
+        tag.style.transform = 'scale(1)'
+        tag.style.backgroundColor = 'rgba(15, 23, 42, 0.92)'
       })
 
       // Popup
@@ -467,7 +488,12 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
         </div>
       `
 
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(popupHtml)
+      const popup = new mapboxgl.Popup({
+        offset: [0, -42],
+        closeButton: true,
+        closeOnClick: true,
+        maxWidth: '260px',
+      }).setHTML(popupHtml)
 
       popup.on('open', () => {
         const routeBtn = document.getElementById(`pin-route-btn-${place.id}`)
@@ -488,7 +514,10 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
         }
       })
 
-      const marker = new mapboxgl.Marker(el)
+      const marker = new mapboxgl.Marker({
+        element: el,
+        anchor: 'bottom',
+      })
         .setLngLat([place.longitude, place.latitude])
         .setPopup(popup)
         .addTo(mapRef.current!)
@@ -519,7 +548,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
       el.style.border = '2px solid white'
       el.style.boxShadow = '0 1px 4px rgba(0,0,0,0.3)'
 
-      const m = new mapboxgl.Marker(el).setLngLat(pt).addTo(mapRef.current!)
+      const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(pt).addTo(mapRef.current!)
       roadMarkersRef.current.push(m)
     })
 
@@ -587,7 +616,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
           </div>
         </div>
       `
-      const m = new mapboxgl.Marker({ element: el, draggable: true })
+      const m = new mapboxgl.Marker({ element: el, draggable: true, anchor: 'center' })
         .setLngLat([lng, lat])
         .addTo(mapRef.current)
 
