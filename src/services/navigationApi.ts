@@ -54,6 +54,7 @@ export interface RouteResult {
 
 const LOCAL_STORAGE_PLACES_KEY = 'verto_omniroute_places_v2'
 const LOCAL_STORAGE_ROADS_KEY = 'verto_omniroute_roads_v2'
+const DEFAULT_CAMPUS_PLACES: Place[] = campusPlacesData as Place[]
 
 // Dedicated global shared cloud store (CORS-enabled, zero-config, universal sync across all devices)
 const GIST_ID = 'b15fc0478f45ef8039dbb5bd99726579'
@@ -72,38 +73,67 @@ async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[];
     return { places: cachedGistData.places, roads: cachedGistData.roads }
   }
 
-  // 1. If GIST_TOKEN is provided, try Gist REST API
+  // 1. If GIST_TOKEN is provided, try Gist REST API (bypasses CDN cache)
   if (GIST_TOKEN) {
     try {
       const res = await fetch(`${GIST_API_URL}?_t=${now}`, {
         headers: {
           Accept: 'application/vnd.github+json',
           Authorization: `token ${GIST_TOKEN}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
         },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(5000),
       })
       if (res.ok) {
         const data = await res.json()
         let places: Place[] = []
         let roads: Road[] = []
-        if (data.files?.['places.json']?.content) {
-          try {
-            const parsed = JSON.parse(data.files['places.json'].content)
-            if (Array.isArray(parsed)) places = parsed
-          } catch {
-            // ignore
+
+        if (data.files?.['places.json']) {
+          const fileObj = data.files['places.json']
+          if (fileObj.truncated && fileObj.raw_url) {
+            try {
+              const rawRes = await fetch(`${fileObj.raw_url}${fileObj.raw_url.includes('?') ? '&' : '?'}_t=${now}`, {
+                signal: AbortSignal.timeout(4000),
+              })
+              if (rawRes.ok) {
+                const parsed = await rawRes.json()
+                if (Array.isArray(parsed)) places = parsed
+              }
+            } catch {}
+          } else if (fileObj.content) {
+            try {
+              const parsed = JSON.parse(fileObj.content)
+              if (Array.isArray(parsed)) places = parsed
+            } catch {}
           }
         }
-        if (data.files?.['roads.json']?.content) {
-          try {
-            const parsed = JSON.parse(data.files['roads.json'].content)
-            if (Array.isArray(parsed)) roads = parsed
-          } catch {
-            // ignore
+
+        if (data.files?.['roads.json']) {
+          const fileObj = data.files['roads.json']
+          if (fileObj.truncated && fileObj.raw_url) {
+            try {
+              const rawRes = await fetch(`${fileObj.raw_url}${fileObj.raw_url.includes('?') ? '&' : '?'}_t=${now}`, {
+                signal: AbortSignal.timeout(4000),
+              })
+              if (rawRes.ok) {
+                const parsed = await rawRes.json()
+                if (Array.isArray(parsed)) roads = parsed
+              }
+            } catch {}
+          } else if (fileObj.content) {
+            try {
+              const parsed = JSON.parse(fileObj.content)
+              if (Array.isArray(parsed)) roads = parsed
+            } catch {}
           }
         }
-        cachedGistData = { places, roads, timestamp: now }
-        return { places, roads }
+
+        if (places.length > 0 || roads.length > 0) {
+          cachedGistData = { places, roads, timestamp: now }
+          return { places, roads }
+        }
       }
     } catch (err) {
       console.warn('[OmniRoute] Gist API fetch fallback:', err)
@@ -137,9 +167,9 @@ async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[];
   return cachedGistData ? { places: cachedGistData.places, roads: cachedGistData.roads } : { places: [], roads: [] }
 }
 
-async function fetchCloudPlaces(): Promise<Place[]> {
+async function fetchCloudPlaces(forceFresh = false): Promise<Place[]> {
   try {
-    const data = await fetchGistSnapshot()
+    const data = await fetchGistSnapshot(forceFresh)
     return data.places
   } catch (err) {
     console.warn('[OmniRoute] Cloud places sync error:', err)
@@ -147,14 +177,14 @@ async function fetchCloudPlaces(): Promise<Place[]> {
   }
 }
 
-async function syncCloudPlaces(places: Place[]): Promise<void> {
+async function syncCloudPlaces(places: Place[]): Promise<boolean> {
   if (cachedGistData) {
     cachedGistData.places = places
     cachedGistData.timestamp = Date.now()
   }
-  if (!GIST_TOKEN) return
+  if (!GIST_TOKEN) return false
   try {
-    await fetch(GIST_API_URL, {
+    const res = await fetch(GIST_API_URL, {
       method: 'PATCH',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -162,20 +192,23 @@ async function syncCloudPlaces(places: Place[]): Promise<void> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        description: `Campus landmarks synced ${new Date().toISOString()}`,
         files: {
           'places.json': { content: JSON.stringify(places, null, 2) },
         },
       }),
       signal: AbortSignal.timeout(6000),
     })
+    return res.ok
   } catch (err) {
     console.warn('[OmniRoute] Cloud places push error:', err)
+    return false
   }
 }
 
-async function fetchCloudRoads(): Promise<Road[]> {
+async function fetchCloudRoads(forceFresh = false): Promise<Road[]> {
   try {
-    const data = await fetchGistSnapshot()
+    const data = await fetchGistSnapshot(forceFresh)
     return data.roads
   } catch (err) {
     console.warn('[OmniRoute] Cloud roads sync error:', err)
@@ -183,14 +216,14 @@ async function fetchCloudRoads(): Promise<Road[]> {
   }
 }
 
-async function syncCloudRoads(roads: Road[]): Promise<void> {
+async function syncCloudRoads(roads: Road[]): Promise<boolean> {
   if (cachedGistData) {
     cachedGistData.roads = roads
     cachedGistData.timestamp = Date.now()
   }
-  if (!GIST_TOKEN) return
+  if (!GIST_TOKEN) return false
   try {
-    await fetch(GIST_API_URL, {
+    const res = await fetch(GIST_API_URL, {
       method: 'PATCH',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -198,14 +231,17 @@ async function syncCloudRoads(roads: Road[]): Promise<void> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        description: `Campus roads synced ${new Date().toISOString()}`,
         files: {
           'roads.json': { content: JSON.stringify(roads, null, 2) },
         },
       }),
       signal: AbortSignal.timeout(6000),
     })
+    return res.ok
   } catch (err) {
     console.warn('[OmniRoute] Cloud roads push error:', err)
+    return false
   }
 }
 
@@ -223,29 +259,31 @@ export function clearAllCampusData(): void {
  * Guaranteed to return synchronized locations for ALL users across ALL devices.
  */
 export async function fetchPlaces(): Promise<Place[]> {
-  // 1. Primary: Cloud Firestore if live
+  // 1. Primary: Shared Cloud Database (accessible on all devices/browsers)
+  const cloudData = await fetchCloudPlaces()
+  if (cloudData.length > 0) {
+    localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudData))
+    return cloudData
+  }
+
+  // 2. Secondary: Cloud Firestore if live
   if (db) {
     try {
-      const snap = await getDocs(collection(db, 'campus_places'))
+      const snap = await Promise.race([
+        getDocs(collection(db, 'campus_places')),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Firestore timeout')), 2000)),
+      ])
       const firestorePlaces: Place[] = []
       snap.forEach((d) => {
         firestorePlaces.push(d.data() as Place)
       })
       if (firestorePlaces.length > 0) {
         localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(firestorePlaces))
-        syncCloudPlaces(firestorePlaces).catch(() => {})
         return firestorePlaces
       }
     } catch (err) {
       console.warn('[OmniRoute] Firestore places fetch fallback:', err)
     }
-  }
-
-  // 2. Secondary: Shared Cloud Database (accessible on all devices/browsers)
-  const cloudData = await fetchCloudPlaces()
-  if (cloudData.length > 0) {
-    localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(cloudData))
-    return cloudData
   }
 
   // 3. Fallback: local storage cache
@@ -254,7 +292,6 @@ export async function fetchPlaces(): Promise<Place[]> {
     try {
       const parsed = JSON.parse(cached)
       if (Array.isArray(parsed) && parsed.length > 0) {
-        syncCloudPlaces(parsed).catch(() => {})
         return parsed
       }
     } catch {
@@ -271,11 +308,11 @@ export function subscribeToPlaces(callback: (places: Place[]) => void): () => vo
   let isCancelled = false
   let lastFingerprint = ''
 
-  // Fast background sync (every 3.5s) to guarantee real-time cross-device synchronization
+  // Fast background sync (every 10s) to guarantee real-time cross-device synchronization
   const checkCloud = async () => {
     if (isCancelled) return
     try {
-      const cloud = await fetchCloudPlaces()
+      const cloud = await fetchCloudPlaces(true)
       if (cloud.length > 0) {
         const fp = JSON.stringify(cloud.map((p) => `${p.id}-${p.latitude}-${p.longitude}-${p.name}`))
         if (fp !== lastFingerprint) {
@@ -289,7 +326,7 @@ export function subscribeToPlaces(callback: (places: Place[]) => void): () => vo
     }
   }
 
-  const timer = setInterval(checkCloud, 20000)
+  const timer = setInterval(checkCloud, 10000)
 
   // Re-sync immediately when tab is focused
   const onFocus = () => {
@@ -345,7 +382,42 @@ export async function savePlace(
   // 1. Mirror in local storage immediately so UI & map update in 0ms!
   updateLocalPlacesCache(newPlace)
 
-  // 2. Non-blocking background Firestore write (with 2s timeout, never hangs UI)
+  // 2. Comprehensive base list merged with in-memory cached Gist places or localStorage
+  let basePlaces: Place[] = []
+  if (cachedGistData && cachedGistData.places.length > 0) {
+    basePlaces = cachedGistData.places
+  } else {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
+    if (existingStr) {
+      try {
+        basePlaces = JSON.parse(existingStr)
+      } catch {}
+    }
+  }
+  if (basePlaces.length === 0) {
+    basePlaces = DEFAULT_CAMPUS_PLACES
+  }
+
+  const merged = [newPlace, ...basePlaces.filter((p) => p.id !== newPlace.id)]
+  localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(merged))
+  if (cachedGistData) {
+    cachedGistData.places = merged
+    cachedGistData.timestamp = Date.now()
+  }
+
+  // 3. Persist to Shared Cloud Database for all devices/users
+  if (GIST_TOKEN) {
+    try {
+      await Promise.race([
+        syncCloudPlaces(merged),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Sync timeout')), 5000)),
+      ])
+    } catch (err) {
+      console.warn('[OmniRoute] Cloud save error:', err)
+    }
+  }
+
+  // 4. Non-blocking Firestore write (never hangs UI)
   if (db) {
     Promise.race([
       setDoc(doc(db, 'campus_places', newPlace.id), newPlace),
@@ -353,18 +425,6 @@ export async function savePlace(
     ]).catch((err) => {
       console.warn('[OmniRoute] Background Firestore place save:', err)
     })
-  }
-
-  // 3. Non-blocking background Cloud Gist write (if token configured)
-  if (GIST_TOKEN) {
-    fetchCloudPlaces()
-      .then((currentCloud) => {
-        const merged = [newPlace, ...currentCloud.filter((p) => p.id !== newPlace.id)]
-        return syncCloudPlaces(merged)
-      })
-      .catch((err) => {
-        console.warn('[OmniRoute] Background Gist save error:', err)
-      })
   }
 
   return newPlace
@@ -393,14 +453,33 @@ function updateLocalPlacesCache(place: Place) {
  * Delete landmark from Cloud Storage and local cache
  */
 export async function deletePlace(placeId: string): Promise<void> {
-  const existing = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
-  if (existing) {
+  let basePlaces: Place[] = []
+  if (cachedGistData && cachedGistData.places.length > 0) {
+    basePlaces = cachedGistData.places
+  } else {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
+    if (existingStr) {
+      try {
+        basePlaces = JSON.parse(existingStr)
+      } catch {}
+    }
+  }
+
+  const filtered = basePlaces.filter((p) => p.id !== placeId)
+  localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(filtered))
+  if (cachedGistData) {
+    cachedGistData.places = filtered
+    cachedGistData.timestamp = Date.now()
+  }
+
+  if (GIST_TOKEN) {
     try {
-      const list: Place[] = JSON.parse(existing)
-      const filtered = list.filter((p) => p.id !== placeId)
-      localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(filtered))
-    } catch {
-      // ignore
+      await Promise.race([
+        syncCloudPlaces(filtered),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Sync timeout')), 5000)),
+      ])
+    } catch (err) {
+      console.warn('[OmniRoute] Cloud delete error:', err)
     }
   }
 
@@ -409,15 +488,6 @@ export async function deletePlace(placeId: string): Promise<void> {
       deleteDoc(doc(db, 'campus_places', placeId)),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000)),
     ]).catch(() => {})
-  }
-
-  if (GIST_TOKEN) {
-    fetchCloudPlaces()
-      .then((currentCloud) => {
-        const filtered = currentCloud.filter((p) => p.id !== placeId)
-        return syncCloudPlaces(filtered)
-      })
-      .catch(() => {})
   }
 }
 
@@ -430,7 +500,50 @@ export async function updatePlace(
   // 1. Update local cache immediately so UI & map update in 0ms!
   updateLocalPlacesCache(place)
 
-  // 2. Non-blocking background Firestore write (never hangs UI)
+  // 2. Ensure comprehensive base list merged with in-memory cached Gist places or localStorage
+  let basePlaces: Place[] = []
+  if (cachedGistData && cachedGistData.places.length > 0) {
+    basePlaces = cachedGistData.places
+  } else {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_PLACES_KEY)
+    if (existingStr) {
+      try {
+        basePlaces = JSON.parse(existingStr)
+      } catch {}
+    }
+  }
+  if (basePlaces.length === 0) {
+    basePlaces = DEFAULT_CAMPUS_PLACES
+  }
+
+  const idx = basePlaces.findIndex((p) => p.id === place.id)
+  let updatedList: Place[]
+  if (idx >= 0) {
+    updatedList = [...basePlaces]
+    updatedList[idx] = { ...updatedList[idx], ...place }
+  } else {
+    updatedList = [place, ...basePlaces]
+  }
+
+  localStorage.setItem(LOCAL_STORAGE_PLACES_KEY, JSON.stringify(updatedList))
+  if (cachedGistData) {
+    cachedGistData.places = updatedList
+    cachedGistData.timestamp = Date.now()
+  }
+
+  // 3. Persist to Shared Gist Cloud Database for ALL users immediately
+  if (GIST_TOKEN) {
+    try {
+      await Promise.race([
+        syncCloudPlaces(updatedList),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Sync timeout')), 5000)),
+      ])
+    } catch (err) {
+      console.warn('[OmniRoute] Background Gist update error:', err)
+    }
+  }
+
+  // 4. Non-blocking Firestore write (never hangs UI)
   if (db) {
     Promise.race([
       setDoc(doc(db, 'campus_places', place.id), place, { merge: true }),
@@ -438,25 +551,6 @@ export async function updatePlace(
     ]).catch((err) => {
       console.warn('[OmniRoute] Background Firestore update:', err)
     })
-  }
-
-  // 3. Non-blocking background Cloud Gist write (if token configured)
-  if (GIST_TOKEN) {
-    fetchCloudPlaces()
-      .then((currentCloud) => {
-        const index = currentCloud.findIndex((p) => p.id === place.id)
-        let updatedList: Place[]
-        if (index >= 0) {
-          updatedList = [...currentCloud]
-          updatedList[index] = { ...updatedList[index], ...place }
-        } else {
-          updatedList = [place, ...currentCloud]
-        }
-        return syncCloudPlaces(updatedList)
-      })
-      .catch((err) => {
-        console.warn('[OmniRoute] Background Gist update error:', err)
-      })
   }
 
   return place
@@ -477,17 +571,26 @@ export function resetPlaceToDefault(placeId: string): Place | null {
  * Fetch all pathways from shared Cloud Storage + Firestore.
  */
 export async function fetchRoads(): Promise<Road[]> {
-  // 1. Primary: Cloud Firestore if live
+  // 1. Primary: Shared Cloud Database
+  const cloudData = await fetchCloudRoads()
+  if (cloudData.length > 0) {
+    localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudData))
+    return cloudData
+  }
+
+  // 2. Secondary: Cloud Firestore if live
   if (db) {
     try {
-      const snap = await getDocs(collection(db, 'campus_roads'))
+      const snap = await Promise.race([
+        getDocs(collection(db, 'campus_roads')),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Firestore timeout')), 2000)),
+      ])
       const cloudRoads: Road[] = []
       snap.forEach((d) => {
         cloudRoads.push(d.data() as Road)
       })
       if (cloudRoads.length > 0) {
         localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudRoads))
-        syncCloudRoads(cloudRoads).catch(() => {})
         return cloudRoads
       }
     } catch (err) {
@@ -495,19 +598,11 @@ export async function fetchRoads(): Promise<Road[]> {
     }
   }
 
-  // 2. Secondary: Shared Cloud Database
-  const cloudData = await fetchCloudRoads()
-  if (cloudData.length > 0) {
-    localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(cloudData))
-    return cloudData
-  }
-
   const cached = localStorage.getItem(LOCAL_STORAGE_ROADS_KEY)
   if (cached) {
     try {
       const parsed = JSON.parse(cached)
       if (Array.isArray(parsed) && parsed.length > 0) {
-        syncCloudRoads(parsed).catch(() => {})
         return parsed
       }
     } catch {
@@ -527,7 +622,7 @@ export function subscribeToRoads(callback: (roads: Road[]) => void): () => void 
   const checkCloud = async () => {
     if (isCancelled) return
     try {
-      const cloud = await fetchCloudRoads()
+      const cloud = await fetchCloudRoads(true)
       if (cloud.length > 0) {
         const fp = JSON.stringify(cloud.map((r) => `${r.id}-${r.name}`))
         if (fp !== lastFingerprint) {
@@ -541,7 +636,7 @@ export function subscribeToRoads(callback: (roads: Road[]) => void): () => void 
     }
   }
 
-  const timer = setInterval(checkCloud, 25000)
+  const timer = setInterval(checkCloud, 10000)
 
   const onFocus = () => {
     checkCloud()
@@ -595,7 +690,42 @@ export async function saveRoad(
   // 1. Mirror locally immediately
   updateLocalRoadsCache(newRoad)
 
-  // 2. Non-blocking Firestore write (never hangs UI)
+  // 2. Comprehensive base list merged with in-memory cached Gist roads or localStorage
+  let baseRoads: Road[] = []
+  if (cachedGistData && cachedGistData.roads.length > 0) {
+    baseRoads = cachedGistData.roads
+  } else {
+    const existingStr = localStorage.getItem(LOCAL_STORAGE_ROADS_KEY)
+    if (existingStr) {
+      try {
+        baseRoads = JSON.parse(existingStr)
+      } catch {}
+    }
+  }
+  if (baseRoads.length === 0) {
+    baseRoads = campusRoadsData as Road[]
+  }
+
+  const merged = [newRoad, ...baseRoads.filter((r) => r.id !== newRoad.id)]
+  localStorage.setItem(LOCAL_STORAGE_ROADS_KEY, JSON.stringify(merged))
+  if (cachedGistData) {
+    cachedGistData.roads = merged
+    cachedGistData.timestamp = Date.now()
+  }
+
+  // 3. Persist to Shared Cloud Database for all users
+  if (GIST_TOKEN) {
+    try {
+      await Promise.race([
+        syncCloudRoads(merged),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Sync timeout')), 5000)),
+      ])
+    } catch (err) {
+      console.warn('[OmniRoute] Cloud road save error:', err)
+    }
+  }
+
+  // 4. Non-blocking Firestore write (never hangs UI)
   if (db) {
     Promise.race([
       setDoc(doc(db, 'campus_roads', newRoad.id), newRoad),
@@ -603,18 +733,6 @@ export async function saveRoad(
     ]).catch((err) => {
       console.warn('[OmniRoute] Background Firestore road save:', err)
     })
-  }
-
-  // 3. Non-blocking Cloud Gist write (if token configured)
-  if (GIST_TOKEN) {
-    fetchCloudRoads()
-      .then((currentCloud) => {
-        const merged = [newRoad, ...currentCloud.filter((r) => r.id !== newRoad.id)]
-        return syncCloudRoads(merged)
-      })
-      .catch((err) => {
-        console.warn('[OmniRoute] Background Gist road save error:', err)
-      })
   }
 
   return newRoad
