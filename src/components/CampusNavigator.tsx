@@ -391,7 +391,7 @@ export default function CampusNavigator({
       // 2. Completely remove any foggy/hazy effect for 100% crisp visibility
       try {
         map.setFog(null as any)
-      } catch {}
+      } catch { }
     } catch (err) {
       console.warn('[OmniRoute] 3D Terrain initialization skipped:', err)
     }
@@ -434,23 +434,23 @@ export default function CampusNavigator({
             // Bold, high-contrast architectural colors
             'fill-extrusion-color': isSat
               ? [
-                  'interpolate',
-                  ['linear'],
-                  ['coalesce', ['get', 'height'], 20],
-                  0, '#ffffff',
-                  16, '#f1f5f9',
-                  28, '#e2e8f0',
-                  45, '#cbd5e1',
-                ]
+                'interpolate',
+                ['linear'],
+                ['coalesce', ['get', 'height'], 20],
+                0, '#ffffff',
+                16, '#f1f5f9',
+                28, '#e2e8f0',
+                45, '#cbd5e1',
+              ]
               : [
-                  'interpolate',
-                  ['linear'],
-                  ['coalesce', ['get', 'height'], 20],
-                  0, '#ffffff',
-                  16, '#f8fafc',
-                  28, '#e2e8f0',
-                  45, '#cbd5e1',
-                ],
+                'interpolate',
+                ['linear'],
+                ['coalesce', ['get', 'height'], 20],
+                0, '#ffffff',
+                16, '#f8fafc',
+                28, '#e2e8f0',
+                45, '#cbd5e1',
+              ],
             'fill-extrusion-height': [
               'interpolate',
               ['linear'],
@@ -470,7 +470,7 @@ export default function CampusNavigator({
               ['coalesce', ['get', 'min_height'], 0],
             ],
             // Solid, prominent opacity - eliminates any faded or washed-out appearance
-            'fill-extrusion-opacity': 0.94,
+            'fill-extrusion-opacity': 0.2,
             'fill-extrusion-vertical-gradient': true,
           },
         },
@@ -528,7 +528,7 @@ export default function CampusNavigator({
     }
 
     if (map.getSource('campus-roads')) {
-      ;(map.getSource('campus-roads') as mapboxgl.GeoJSONSource).setData(geojsonData)
+      ; (map.getSource('campus-roads') as mapboxgl.GeoJSONSource).setData(geojsonData)
     } else {
       map.addSource('campus-roads', {
         type: 'geojson',
@@ -650,11 +650,10 @@ export default function CampusNavigator({
       // Popup
       const popupHtml = `
         <div style="font-family: Inter, sans-serif; padding: 4px; max-width: 230px;">
-          ${
-            place.image_url
-              ? `<img src="${place.image_url}" style="width: 100%; height: 95px; object-fit: cover; border-radius: 8px; margin-bottom: 6px;" />`
-              : ''
-          }
+          ${place.image_url
+          ? `<img src="${place.image_url}" style="width: 100%; height: 95px; object-fit: cover; border-radius: 8px; margin-bottom: 6px;" />`
+          : ''
+        }
           <div style="font-weight: 700; font-size: 13px; color: #0f172a; margin-bottom: 2px;">${place.name}</div>
           <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-bottom: 8px;">${place.description}</div>
           <div style="display: flex; gap: 6px;">
@@ -738,20 +737,20 @@ export default function CampusNavigator({
       features:
         drawnPoints.length > 1
           ? [
-              {
-                type: 'Feature',
-                properties: {},
-                geometry: {
-                  type: 'LineString',
-                  coordinates: drawnPoints,
-                },
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: drawnPoints,
               },
-            ]
+            },
+          ]
           : [],
     }
 
     if (mapRef.current.getSource('live-draw-line')) {
-      ;(mapRef.current.getSource('live-draw-line') as mapboxgl.GeoJSONSource).setData(lineData)
+      ; (mapRef.current.getSource('live-draw-line') as mapboxgl.GeoJSONSource).setData(lineData)
     } else {
       mapRef.current.addSource('live-draw-line', {
         type: 'geojson',
@@ -901,7 +900,7 @@ export default function CampusNavigator({
     }
 
     if (map.getSource('navigation-route')) {
-      ;(map.getSource('navigation-route') as mapboxgl.GeoJSONSource).setData(routeData)
+      ; (map.getSource('navigation-route') as mapboxgl.GeoJSONSource).setData(routeData)
     } else {
       map.addSource('navigation-route', {
         type: 'geojson',
@@ -1202,9 +1201,8 @@ export default function CampusNavigator({
 
   return (
     <div
-      className={`relative flex h-screen w-full flex-col overflow-hidden bg-[#fff8f2] text-slate-900 transition-all duration-500 ease-out ${
-        pageVisible && !isExiting ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
-      }`}
+      className={`relative flex h-screen w-full flex-col overflow-hidden bg-[#fff8f2] text-slate-900 transition-all duration-500 ease-out ${pageVisible && !isExiting ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+        }`}
       style={{ fontFamily: 'Inter, sans-serif' }}
     >
       {/* 1. Header with LPU Branding & Auth Button (Reference style) */}
@@ -1221,9 +1219,8 @@ export default function CampusNavigator({
       <div className="relative flex flex-1 overflow-hidden">
         {/* Left Interactive Sidebar (Responsive: floating sheet on mobile, fixed panel on desktop) */}
         <aside
-          className={`absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-orange-200/50 bg-[#fffbf8]/95 backdrop-blur-md shadow-2xl transition-all duration-300 sm:relative sm:inset-auto sm:h-full sm:w-[420px] sm:border-r sm:border-t-0 sm:border-orange-200/50 ${
-            mobileDrawerOpen ? 'h-[75vh] sm:h-full' : 'h-16 sm:h-full'
-          }`}
+          className={`absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-orange-200/50 bg-[#fffbf8]/95 backdrop-blur-md shadow-2xl transition-all duration-300 sm:relative sm:inset-auto sm:h-full sm:w-[420px] sm:border-r sm:border-t-0 sm:border-orange-200/50 ${mobileDrawerOpen ? 'h-[75vh] sm:h-full' : 'h-16 sm:h-full'
+            }`}
         >
           {/* Mobile Drawer Drag Handle & Toggle */}
           <div className="flex sm:hidden items-center justify-between border-b border-orange-200/40 px-4 py-2 bg-[#fff4eb]/80">
@@ -1248,11 +1245,10 @@ export default function CampusNavigator({
                 setActiveTab('explore')
                 setMobileDrawerOpen(true)
               }}
-              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-                activeTab === 'explore'
+              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${activeTab === 'explore'
                   ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
-              }`}
+                }`}
             >
               <Compass className="h-4 w-4" />
               <span>Explore</span>
@@ -1263,11 +1259,10 @@ export default function CampusNavigator({
                 setActiveTab('directions')
                 setMobileDrawerOpen(true)
               }}
-              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-                activeTab === 'directions'
+              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${activeTab === 'directions'
                   ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
-              }`}
+                }`}
             >
               <NavIcon className="h-4 w-4" />
               <span>Directions</span>
@@ -1278,11 +1273,10 @@ export default function CampusNavigator({
                 setActiveTab('contribute')
                 setMobileDrawerOpen(true)
               }}
-              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-                activeTab === 'contribute'
+              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold uppercase tracking-wider transition cursor-pointer ${activeTab === 'contribute'
                   ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/80'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-orange-100/50'
-              }`}
+                }`}
             >
               <PlusCircle className="h-4 w-4" />
               <span>Contribute</span>
@@ -1310,11 +1304,10 @@ export default function CampusNavigator({
                   <button
                     key={cat}
                     onClick={() => setCategoryFilter(cat)}
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
-                      categoryFilter === cat
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${categoryFilter === cat
                         ? 'bg-orange-600 text-white shadow-xs'
                         : 'bg-[#fff3e8] border border-orange-200/60 text-slate-700 hover:bg-orange-100/80'
-                    }`}
+                      }`}
                   >
                     {cat.replace('_', ' ')}
                   </button>
@@ -1332,11 +1325,10 @@ export default function CampusNavigator({
                     <div
                       key={place.id}
                       onClick={() => handleFocusPlace(place)}
-                      className={`group rounded-xl border p-3 transition-all cursor-pointer ${
-                        selectedPlace?.id === place.id
+                      className={`group rounded-xl border p-3 transition-all cursor-pointer ${selectedPlace?.id === place.id
                           ? 'border-orange-500 bg-orange-50/80 shadow-sm ring-1 ring-orange-400/40'
                           : 'border-orange-200/60 bg-[#fffcf9] hover:border-orange-300 hover:bg-white hover:shadow-xs'
-                      }`}
+                        }`}
                     >
                       <div className="flex gap-3">
                         {place.image_url && (
@@ -1408,11 +1400,10 @@ export default function CampusNavigator({
                 <button
                   type="button"
                   onClick={() => setTravelMode('walking')}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                    travelMode === 'walking'
+                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${travelMode === 'walking'
                       ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   <Footprints className="h-3.5 w-3.5" />
                   <span>Walking</span>
@@ -1420,11 +1411,10 @@ export default function CampusNavigator({
                 <button
                   type="button"
                   onClick={() => setTravelMode('cycling')}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                    travelMode === 'cycling'
+                  className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${travelMode === 'cycling'
                       ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   <Bike className="h-3.5 w-3.5" />
                   <span>Cycling</span>
@@ -1599,33 +1589,30 @@ export default function CampusNavigator({
                 <button
                   type="button"
                   onClick={() => setContributeMode('place')}
-                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
-                    contributeMode === 'place'
+                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${contributeMode === 'place'
                       ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   📍 Add Place
                 </button>
                 <button
                   type="button"
                   onClick={() => setContributeMode('update')}
-                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
-                    contributeMode === 'update'
+                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${contributeMode === 'update'
                       ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   ✏️ Fix Location
                 </button>
                 <button
                   type="button"
                   onClick={() => setContributeMode('road')}
-                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${
-                    contributeMode === 'road'
+                  className={`rounded-lg py-1.5 text-[11px] font-bold transition cursor-pointer ${contributeMode === 'road'
                       ? 'bg-[#fffcf9] text-orange-600 shadow-xs ring-1 ring-orange-200/70'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   🛣️ Draw Road
                 </button>
@@ -1924,11 +1911,10 @@ export default function CampusNavigator({
                           <button
                             type="button"
                             onClick={() => setIsPickingLocation(!isPickingLocation)}
-                            className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${
-                              isPickingLocation
+                            className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${isPickingLocation
                                 ? 'bg-orange-600 text-white shadow-xs'
                                 : 'bg-[#fffcf9] border border-orange-300 text-orange-800 hover:bg-orange-100'
-                            }`}
+                              }`}
                           >
                             {isPickingLocation ? '🎯 Map Click Active' : 'Click Map to Pick'}
                           </button>
@@ -2182,11 +2168,10 @@ export default function CampusNavigator({
 
             <button
               onClick={toggle3dPitch}
-              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-md transition cursor-pointer ${
-                is3dMode
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-md transition cursor-pointer ${is3dMode
                   ? 'border-orange-500 bg-orange-600 text-white shadow-orange-500/20'
                   : 'border-orange-200/80 bg-[#fffbf8]/95 text-slate-800 hover:bg-white hover:text-orange-600'
-              }`}
+                }`}
               title="Toggle 3D Terrain & Building Perspective"
             >
               <Compass className="h-3.5 w-3.5" />
