@@ -20,6 +20,7 @@ import {
   type ItemCategory,
   subscribeToLostFoundItems,
   createLostFoundItem,
+  fetchCloudChats,
 } from '../services/lostAndFoundApi'
 import { uploadImageFile } from '../services/navigationApi'
 import LostFoundChatModal from './LostFoundChatModal'
@@ -87,6 +88,42 @@ export default function LostAndFoundHub({
       setSelectedItemForChat((prev) => (prev ? liveItems.find((i) => i.id === prev.id) || prev : null))
     })
     return () => unsub()
+  }, [])
+
+  // Track chat counts for each case
+  const [chatCounts, setChatCounts] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let isMounted = true
+    const updateCounts = async () => {
+      try {
+        const chats = await fetchCloudChats()
+        if (!isMounted) return
+        const counts: Record<string, number> = {}
+        for (const [id, msgs] of Object.entries(chats)) {
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            counts[id] = msgs.length
+          }
+        }
+        setChatCounts(counts)
+      } catch {}
+    }
+
+    updateCounts()
+    const interval = setInterval(updateCounts, 6000)
+
+    let ch: BroadcastChannel | null = null
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        ch = new BroadcastChannel('verto_lost_found_chat_bus')
+        ch.onmessage = () => updateCounts()
+      }
+    } catch {}
+
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+      ch?.close()
+    }
   }, [])
 
   // Filtered items
@@ -558,6 +595,11 @@ export default function LostAndFoundHub({
                       >
                         <MessageSquare className="h-3.5 w-3.5 text-orange-600" />
                         <span>Chat & Coordinate</span>
+                        {chatCounts[item.id] ? (
+                          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-orange-200/80 text-orange-800 text-[10px] font-extrabold">
+                            {chatCounts[item.id]}
+                          </span>
+                        ) : null}
                       </button>
                     </div>
                   </div>

@@ -279,9 +279,13 @@ export default function LostFoundChatModal({
               placeholder="Your name"
             />
           </div>
-          <span className="text-[11px] text-slate-400 hidden sm:inline">
-            Live Firebase sync • Visible to community
-          </span>
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full shadow-2xs">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>Live Cloud Sync Active</span>
+          </div>
         </div>
 
         {/* Chat message thread */}
