@@ -7,6 +7,7 @@ import {
   onAuthStateChanged,
   type User,
 } from 'firebase/auth'
+import { getFirestore, type Firestore } from 'firebase/firestore'
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -21,6 +22,17 @@ export const firebaseConfig = {
 // Initialize Firebase client instance
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
 export const auth = getAuth(app)
+
+let dbInstance: Firestore | null = null
+try {
+  if (firebaseConfig.projectId && firebaseConfig.projectId !== 'your_firebase_project_id') {
+    dbInstance = getFirestore(app)
+  }
+} catch (err) {
+  console.warn('[Firebase] Firestore init skipped/error:', err)
+}
+
+export const db = dbInstance
 
 export async function loginWithEmail(email: string, pass: string): Promise<User> {
   const credential = await signInWithEmailAndPassword(auth, email.trim(), pass)

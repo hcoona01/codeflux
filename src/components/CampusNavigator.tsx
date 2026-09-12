@@ -32,11 +32,13 @@ import {
   MAPBOX_PUBLIC_TOKEN,
   LPU_CENTER_COORDS,
   fetchPlaces,
+  subscribeToPlaces,
   savePlace,
   updatePlace,
   getOriginalPlace,
   clearAllCampusData,
   fetchRoads,
+  subscribeToRoads,
   saveRoad,
   uploadImageFile,
   fetchMapboxRoute,
@@ -174,7 +176,7 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     return () => unsubscribe()
   }, [])
 
-  // Load campus data
+  // Load campus data & subscribe to real-time live updates across all users
   useEffect(() => {
     fetchPlaces().then((data) => {
       setPlaces(data)
@@ -185,7 +187,26 @@ export default function CampusNavigator({ onBackToHome }: CampusNavigatorProps) 
     fetchRoads().then((data) => {
       setRoads(data)
     })
+
+    const unsubPlaces = subscribeToPlaces((livePlaces) => {
+      setPlaces(livePlaces)
+    })
+
+    const unsubRoads = subscribeToRoads((liveRoads) => {
+      setRoads(liveRoads)
+    })
+
+    return () => {
+      unsubPlaces()
+      unsubRoads()
+    }
   }, [])
+
+  // Re-render custom roads whenever roads data changes from any user
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return
+    setupRoadsSourceAndLayer(mapRef.current, roads)
+  }, [roads, mapLoaded])
 
   // Initialize Mapbox map
   useEffect(() => {
