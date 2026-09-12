@@ -79,92 +79,6 @@ const CATEGORY_ICONS: Record<string, string> = {
   hospital: '🏥',
 }
 
-// Helper to generate accurate 3D architectural bounding boxes around campus landmarks
-function createBuildingBox(
-  lng: number,
-  lat: number,
-  wMeters: number,
-  hMeters: number,
-  properties: { name: string; height: number; base_height?: number; color: string }
-): Feature {
-  const dLng = wMeters / 94800 / 2
-  const dLat = hMeters / 111000 / 2
-  return {
-    type: 'Feature',
-    properties: {
-      ...properties,
-      base_height: properties.base_height || 0,
-    },
-    geometry: {
-      type: 'Polygon',
-      coordinates: [[
-        [lng - dLng, lat - dLat],
-        [lng + dLng, lat - dLat],
-        [lng + dLng, lat + dLat],
-        [lng - dLng, lat + dLat],
-        [lng - dLng, lat - dLat],
-      ]],
-    },
-  }
-}
-
-// Dedicated 3D Landmark Envelopes for LPU Campus
-const CAMPUS_3D_LANDMARKS_DATA: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    createBuildingBox(75.704688, 31.251677, 72, 48, {
-      name: 'Block 34 (Academic Complex & Food Court)',
-      height: 32,
-      color: '#f97316',
-    }),
-    createBuildingBox(75.703692, 31.251938, 62, 54, {
-      name: 'Block 36 / Central Library',
-      height: 28,
-      color: '#7c3aed',
-    }),
-    createBuildingBox(75.704077, 31.252713, 65, 44, {
-      name: 'Block 30 / Admissions & Admin Block',
-      height: 28,
-      color: '#2563eb',
-    }),
-    createBuildingBox(75.704531, 31.255131, 85, 68, {
-      name: 'Unipolis (Open Amphitheatre & Pavilion)',
-      height: 24,
-      color: '#ec4899',
-    }),
-    createBuildingBox(75.703300, 31.253379, 54, 44, {
-      name: 'Robopark (Technology Innovation Hub)',
-      height: 24,
-      color: '#0284c7',
-    }),
-    createBuildingBox(75.705261, 31.256341, 60, 50, {
-      name: 'Girls Hostel 4 (GH4) Residence Tower',
-      height: 42,
-      color: '#9333ea',
-    }),
-    createBuildingBox(75.703192, 31.248867, 70, 54, {
-      name: 'Block 53 - Boys Hostel 5 (BH5) Residence Tower',
-      height: 44,
-      color: '#4f46e5',
-    }),
-    createBuildingBox(75.706811, 31.258118, 68, 54, {
-      name: 'UniHospital (Campus Health Center)',
-      height: 22,
-      color: '#059669',
-    }),
-    createBuildingBox(75.703100, 31.252200, 78, 50, {
-      name: 'UniMall & Food Street Complex',
-      height: 36,
-      color: '#ea580c',
-    }),
-    createBuildingBox(75.706300, 31.253600, 88, 60, {
-      name: 'Shanti Devi Mittal Indoor Sports Complex',
-      height: 26,
-      color: '#0891b2',
-    }),
-  ],
-}
-
 export default function CampusNavigator({
   onBackToHome,
   initialCategory = 'all',
@@ -426,8 +340,8 @@ export default function CampusNavigator({
 
     map.on('load', () => {
       setMapLoaded(true)
-      setup3dTerrainAndSky(map)
-      setup3dBuildings(map)
+      setup3dTerrain(map)
+      setup3dBuildings(map, false)
       setupRoadsSourceAndLayer(map, roads)
     })
 
@@ -460,8 +374,8 @@ export default function CampusNavigator({
     }
   }, [])
 
-  // 3D Terrain mesh (DEM) & Realistic Atmospheric Sky / Sun illumination
-  const setup3dTerrainAndSky = (map: mapboxgl.Map) => {
+  // 3D Terrain mesh without foggy haze
+  const setup3dTerrain = (map: mapboxgl.Map) => {
     try {
       // 1. Add 3D Terrain DEM mesh
       if (!map.getSource('mapbox-dem')) {
@@ -472,30 +386,33 @@ export default function CampusNavigator({
           maxzoom: 14,
         })
       }
-      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 })
 
-      // 2. Add realistic atmospheric sky & sun angles
-      map.setFog({
-        range: [-1, 2],
-        color: 'white',
-        'horizon-blend': 0.1,
-        'high-color': '#245cdf',
-        'space-color': '#0b1026',
-        'star-intensity': 0.2,
-      })
+      // 2. Completely remove any foggy/hazy effect for 100% crisp visibility
+      try {
+        map.setFog(null as any)
+      } catch {}
     } catch (err) {
-      console.warn('[OmniRoute] 3D Terrain/Fog initialization skipped:', err)
+      console.warn('[OmniRoute] 3D Terrain initialization skipped:', err)
     }
   }
 
-  // 3D Buildings & Campus Landmark Structures setup
-  const setup3dBuildings = (map: mapboxgl.Map) => {
+  // 3D Buildings setup directly according to 2D Map building footprints
+  const setup3dBuildings = (map: mapboxgl.Map, isSat: boolean) => {
     const layers = map.getStyle()?.layers || []
     const labelLayerId = layers.find(
       (layer) => layer.type === 'symbol' && layer.layout && layer.layout['text-field'],
     )?.id
 
-    // 1. Global Vector Composite 3D Buildings with Vertical Gradient
+    // Remove legacy custom overlays if present
+    if (map.getLayer('lpu-3d-landmarks-layer')) {
+      map.removeLayer('lpu-3d-landmarks-layer')
+    }
+    if (map.getSource('lpu-3d-landmarks')) {
+      map.removeSource('lpu-3d-landmarks')
+    }
+
+    // 3D structures configured from the 2D map's actual vector building footprints
     if (!map.getLayer('3d-buildings') && map.getSource('composite')) {
       map.addLayer(
         {
@@ -506,19 +423,9 @@ export default function CampusNavigator({
           type: 'fill-extrusion',
           minzoom: 14,
           paint: {
-            'fill-extrusion-color': [
-              'interpolate',
-              ['linear'],
-              ['get', 'height'],
-              0,
-              '#e2e8f0',
-              15,
-              '#cbd5e1',
-              30,
-              '#94a3b8',
-              50,
-              '#64748b',
-            ],
+            // In satellite mode: realistic translucent glass volume so real satellite rooftops & textures show through
+            // In 2D map streets mode: clean architectural neutral tone matching the 2D map layout
+            'fill-extrusion-color': isSat ? '#f1f5f9' : '#cbd5e1',
             'fill-extrusion-height': [
               'interpolate',
               ['linear'],
@@ -526,7 +433,7 @@ export default function CampusNavigator({
               14,
               0,
               14.5,
-              ['coalesce', ['get', 'height'], 18],
+              ['coalesce', ['get', 'height'], 16],
             ],
             'fill-extrusion-base': [
               'interpolate',
@@ -537,7 +444,7 @@ export default function CampusNavigator({
               14.5,
               ['coalesce', ['get', 'min_height'], 0],
             ],
-            'fill-extrusion-opacity': 0.85,
+            'fill-extrusion-opacity': isSat ? 0.32 : 0.75,
             'fill-extrusion-vertical-gradient': true,
           },
         },
@@ -545,40 +452,13 @@ export default function CampusNavigator({
       )
     }
 
-    // 2. Custom Detailed 3D Architectural Campus Landmarks
-    if (!map.getSource('lpu-3d-landmarks')) {
-      map.addSource('lpu-3d-landmarks', {
-        type: 'geojson',
-        data: CAMPUS_3D_LANDMARKS_DATA,
-      })
-    }
-
-    if (!map.getLayer('lpu-3d-landmarks-layer')) {
-      map.addLayer(
-        {
-          id: 'lpu-3d-landmarks-layer',
-          type: 'fill-extrusion',
-          source: 'lpu-3d-landmarks',
-          minzoom: 13,
-          paint: {
-            'fill-extrusion-color': ['get', 'color'],
-            'fill-extrusion-height': ['get', 'height'],
-            'fill-extrusion-base': ['get', 'base_height'],
-            'fill-extrusion-opacity': 0.9,
-            'fill-extrusion-vertical-gradient': true,
-          },
-        },
-        labelLayerId,
-      )
-    }
-
-    // 3. Directional Architectural Sun Lighting for realistic facade shadows
+    // Directional lighting without fog
     try {
       map.setLight({
         anchor: 'viewport',
         color: '#ffffff',
-        intensity: 0.45,
-        position: [1.25, 215, 38],
+        intensity: 0.35,
+        position: [1.15, 210, 30],
       })
     } catch {
       // quiet
@@ -891,16 +771,17 @@ export default function CampusNavigator({
   // Satellite Style Toggle
   const toggleMapStyle = () => {
     if (!mapRef.current) return
-    const newStyle = isSatellite
-      ? 'mapbox://styles/mapbox/streets-v12'
-      : 'mapbox://styles/mapbox/satellite-streets-v12'
+    const nextIsSat = !isSatellite
+    const newStyle = nextIsSat
+      ? 'mapbox://styles/mapbox/satellite-streets-v12'
+      : 'mapbox://styles/mapbox/streets-v12'
     mapRef.current.setStyle(newStyle)
-    setIsSatellite(!isSatellite)
+    setIsSatellite(nextIsSat)
 
     mapRef.current.once('style.load', () => {
       if (mapRef.current) {
-        setup3dTerrainAndSky(mapRef.current)
-        setup3dBuildings(mapRef.current)
+        setup3dTerrain(mapRef.current)
+        setup3dBuildings(mapRef.current, nextIsSat)
         setupRoadsSourceAndLayer(mapRef.current, roads)
       }
     })
