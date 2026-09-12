@@ -64,10 +64,10 @@ export default function LostFoundChatModal({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
-  // Real-time Firestore subscription
+  // Real-time Firestore & Cloud Gist & BroadcastChannel subscription
   useEffect(() => {
     const unsub = subscribeToCaseChat(item.id, (msgs) => {
-      setMessages(msgs)
+      setMessages([...msgs])
     })
     return () => unsub()
   }, [item.id])

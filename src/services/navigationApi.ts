@@ -78,7 +78,6 @@ async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[];
     try {
       const res = await fetch(`${GIST_API_URL}?_t=${now}`, {
         headers: {
-          Accept: 'application/vnd.github+json',
           Authorization: `token ${GIST_TOKEN}`,
         },
         signal: AbortSignal.timeout(5000),
@@ -135,7 +134,6 @@ async function syncCloudPlaces(places: Place[]): Promise<boolean> {
     const res = await fetch(GIST_API_URL, {
       method: 'PATCH',
       headers: {
-        Accept: 'application/vnd.github+json',
         Authorization: `token ${GIST_TOKEN}`,
         'Content-Type': 'application/json',
       },
@@ -174,7 +172,6 @@ async function syncCloudRoads(roads: Road[]): Promise<boolean> {
     const res = await fetch(GIST_API_URL, {
       method: 'PATCH',
       headers: {
-        Accept: 'application/vnd.github+json',
         Authorization: `token ${GIST_TOKEN}`,
         'Content-Type': 'application/json',
       },

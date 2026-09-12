@@ -158,7 +158,6 @@ async function syncCloudLostFound(items: LostFoundItem[]): Promise<boolean> {
     const res = await fetch(GIST_API_URL, {
       method: 'PATCH',
       headers: {
-        Accept: 'application/vnd.github+json',
         Authorization: `token ${GIST_TOKEN}`,
         'Content-Type': 'application/json',
       },
@@ -183,7 +182,6 @@ async function fetchCloudLostFound(): Promise<LostFoundItem[]> {
   try {
     const res = await fetch(`${GIST_API_URL}?_t=${Date.now()}`, {
       headers: {
-        Accept: 'application/vnd.github+json',
         Authorization: `token ${GIST_TOKEN}`,
       },
       signal: AbortSignal.timeout(5000),
@@ -418,19 +416,24 @@ const GIST_CHATS_FILE = 'lost_found_chats.json'
 let cachedCloudChats: Record<string, ChatMessage[]> = {}
 let lastCloudChatFetch = 0
 
+// Persistent BroadcastChannel singleton across the tab life cycle
+const globalChatBroadcastChannel =
+  typeof window !== 'undefined' && 'BroadcastChannel' in window
+    ? new BroadcastChannel('verto_lost_found_chat_bus')
+    : null
+
 /**
  * Fetch cloud chats dictionary for all lost & found cases
  */
 export async function fetchCloudChats(forceFresh = false): Promise<Record<string, ChatMessage[]>> {
   const now = Date.now()
-  if (!forceFresh && now - lastCloudChatFetch < 2000 && Object.keys(cachedCloudChats).length > 0) {
+  if (!forceFresh && now - lastCloudChatFetch < 1500 && Object.keys(cachedCloudChats).length > 0) {
     return cachedCloudChats
   }
   if (!GIST_TOKEN) return cachedCloudChats
   try {
     const res = await fetch(`${GIST_API_URL}?_t=${now}`, {
       headers: {
-        Accept: 'application/vnd.github+json',
         Authorization: `token ${GIST_TOKEN}`,
       },
       signal: AbortSignal.timeout(5000),
@@ -485,7 +488,6 @@ async function processChatSyncQueue(): Promise<void> {
     await fetch(GIST_API_URL, {
       method: 'PATCH',
       headers: {
-        Accept: 'application/vnd.github+json',
         Authorization: `token ${GIST_TOKEN}`,
         'Content-Type': 'application/json',
       },
@@ -516,7 +518,7 @@ function queueCloudChatSync(itemId: string) {
 
 /**
  * Real-time listener for chat messages of a specific item
- * Syncs instantly across tabs via BroadcastChannel + Storage events,
+ * Syncs instantly across tabs via persistent BroadcastChannel + Storage events,
  * and across devices via Cloud Gist polling and Firestore.
  */
 export function subscribeToCaseChat(
@@ -525,29 +527,31 @@ export function subscribeToCaseChat(
 ): () => void {
   // 1. Instant local render
   const localMsgs = getLocalChatMessages(itemId)
-  callback(localMsgs)
+  callback([...localMsgs])
 
-  // 2. Multi-tab BroadcastChannel sync (< 1ms between open tabs/windows)
-  let channel: BroadcastChannel | null = null
-  try {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      channel = new BroadcastChannel('verto_lost_found_chat_bus')
-      channel.onmessage = (event) => {
-        if (event.data?.type === 'CHAT_UPDATED' && event.data?.itemId === itemId) {
-          callback(getLocalChatMessages(itemId))
-        }
+  // 2. Multi-tab BroadcastChannel sync (< 1ms between open tabs/windows, even incognito)
+  const handleBroadcast = (event: MessageEvent) => {
+    if (event.data?.type === 'CHAT_UPDATED' && event.data?.itemId === itemId) {
+      if (Array.isArray(event.data.messages) && event.data.messages.length > 0) {
+        saveLocalChatMessages(itemId, event.data.messages)
+        callback([...event.data.messages])
+      } else {
+        const fresh = getLocalChatMessages(itemId)
+        callback([...fresh])
       }
     }
-  } catch {
-    // ignore
+  }
+
+  if (globalChatBroadcastChannel) {
+    globalChatBroadcastChannel.addEventListener('message', handleBroadcast)
   }
 
   // 3. Window custom event listener (same-tab reactivity)
   const handleLocalChat = (e: any) => {
     if (e.detail && Array.isArray(e.detail)) {
-      callback(e.detail)
+      callback([...e.detail])
     } else {
-      callback(getLocalChatMessages(itemId))
+      callback([...getLocalChatMessages(itemId)])
     }
   }
 
@@ -558,7 +562,8 @@ export function subscribeToCaseChat(
   // 4. Storage event listener (cross-window fallback)
   const handleStorage = (e: StorageEvent) => {
     if (e.key === `${LOCAL_STORAGE_CHATS_PREFIX}${itemId}`) {
-      callback(getLocalChatMessages(itemId))
+      const fresh = getLocalChatMessages(itemId)
+      callback([...fresh])
     }
   }
 
@@ -578,9 +583,13 @@ export function subscribeToCaseChat(
       const currentLocal = getLocalChatMessages(itemId)
       const merged = mergeMessageLists(currentLocal, remoteMsgs)
 
-      if (merged.length !== currentLocal.length) {
+      const isDifferent =
+        merged.length !== currentLocal.length ||
+        (merged.length > 0 && merged[merged.length - 1]?.id !== currentLocal[currentLocal.length - 1]?.id)
+
+      if (isDifferent) {
         saveLocalChatMessages(itemId, merged)
-        callback(merged)
+        callback([...merged])
       }
     } catch {
       // quiet fallback
@@ -590,8 +599,8 @@ export function subscribeToCaseChat(
   // Initial cloud pull
   pullCloudMessages()
 
-  // Real-time polling while the chat modal is open
-  const pollTimer = setInterval(pullCloudMessages, 3000)
+  // Real-time polling while the chat modal is open (every 2.5s)
+  const pollTimer = setInterval(pullCloudMessages, 2500)
 
   // 6. Firestore real-time listener fallback (if Firestore is enabled)
   let unsubFirestore: (() => void) | null = null
@@ -610,7 +619,7 @@ export function subscribeToCaseChat(
               const currentLocal = getLocalChatMessages(itemId)
               const merged = mergeMessageLists(currentLocal, msgs)
               saveLocalChatMessages(itemId, merged)
-              callback(merged)
+              callback([...merged])
             }
           }
         },
@@ -633,10 +642,8 @@ export function subscribeToCaseChat(
       window.removeEventListener(`verto_lost_found_chat_${itemId}`, handleLocalChat)
       window.removeEventListener('storage', handleStorage)
     }
-    if (channel) {
-      try {
-        channel.close()
-      } catch {}
+    if (globalChatBroadcastChannel) {
+      globalChatBroadcastChannel.removeEventListener('message', handleBroadcast)
     }
     unsubFirestore?.()
   }
@@ -675,12 +682,14 @@ export async function sendCaseMessage(
     )
   }
 
-  // 3. Broadcast to all open tabs/windows in real time
+  // 3. Broadcast to all open tabs/windows with message data in real time
   try {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      const ch = new BroadcastChannel('verto_lost_found_chat_bus')
-      ch.postMessage({ type: 'CHAT_UPDATED', itemId })
-      ch.close()
+    if (globalChatBroadcastChannel) {
+      globalChatBroadcastChannel.postMessage({
+        type: 'CHAT_UPDATED',
+        itemId,
+        messages: updated,
+      })
     }
   } catch {
     // ignore
