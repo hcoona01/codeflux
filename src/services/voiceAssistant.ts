@@ -192,3 +192,20 @@ export function buildStepSpeech(stepIndex: number, totalSteps: number, instructi
   const formattedDist = formatDistanceForSpeech(distanceMeters)
   return `Step ${stepIndex + 1} of ${totalSteps}! In ${formattedDist}, ${instruction}.`
 }
+
+export function buildTurnAlertSpeech(
+  stepIndex: number,
+  totalSteps: number,
+  instruction: string,
+  distanceMeters: number,
+  isArrival?: boolean,
+): string {
+  if (isArrival || stepIndex >= totalSteps - 1 || instruction.toLowerCase().includes('arrive')) {
+    return `Awesome! You have arrived at your destination! We did it!`
+  }
+  const formattedDist = formatDistanceForSpeech(distanceMeters)
+  if (distanceMeters > 0) {
+    return `Turn coming up in ${formattedDist}! ${instruction}!`
+  }
+  return `Now, ${instruction}!`
+}

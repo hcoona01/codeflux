@@ -43,6 +43,7 @@ export interface RouteStep {
   distance: number
   duration: number
   maneuverType?: string
+  location?: [number, number]
 }
 
 export interface RouteResult {
@@ -1131,6 +1132,7 @@ export async function fetchMapboxRoute(
               distance: Math.round(step.distance),
               duration: Math.round(step.duration),
               maneuverType: step.maneuver?.type,
+              location: step.maneuver?.location ? [step.maneuver.location[0], step.maneuver.location[1]] : undefined,
             })
           })
         }

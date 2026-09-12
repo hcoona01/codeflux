@@ -25,6 +25,12 @@ import {
   VolumeX,
   Play,
   Square,
+  CornerUpRight,
+  CornerUpLeft,
+  ArrowUp,
+  Pause,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import type { FeatureCollection, Feature } from 'geojson'
@@ -38,6 +44,7 @@ import {
   stopSpeaking,
   buildRouteStartSpeech,
   buildStepSpeech,
+  buildTurnAlertSpeech,
 } from '../services/voiceAssistant'
 import {
   MAPBOX_PUBLIC_TOKEN,
@@ -87,6 +94,48 @@ const CATEGORY_ICONS: Record<string, string> = {
   gate: '🚪',
   sports: '⚽',
   hospital: '🏥',
+}
+
+function getDistanceMeters(coord1: [number, number], coord2: [number, number]): number {
+  const [lng1, lat1] = coord1
+  const [lng2, lat2] = coord2
+  const R = 6371000
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+function getBearing(coord1: [number, number], coord2: [number, number]): number {
+  const [lng1, lat1] = coord1
+  const [lng2, lat2] = coord2
+  const y = Math.sin(((lng2 - lng1) * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180)
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.cos(((lng2 - lng1) * Math.PI) / 180)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+function getManeuverIcon(maneuverType?: string, instruction?: string) {
+  const text = (instruction || '').toLowerCase()
+  if (text.includes('arrive') || maneuverType === 'arrive') {
+    return <CheckCircle2 className="h-6 w-6 text-emerald-300" />
+  }
+  if (text.includes('left') || maneuverType?.includes('left')) {
+    return <CornerUpLeft className="h-6 w-6 text-white" />
+  }
+  if (text.includes('right') || maneuverType?.includes('right')) {
+    return <CornerUpRight className="h-6 w-6 text-white" />
+  }
+  return <ArrowUp className="h-6 w-6 text-white" />
 }
 
 export default function CampusNavigator({
@@ -156,6 +205,26 @@ export default function CampusNavigator({
   const [guideSpeakingText, setGuideSpeakingText] = useState<string | null>(null)
   const [activeSpeechStepIdx, setActiveSpeechStepIdx] = useState<number | null>(null)
 
+  // Live Turn-by-Turn Navigation state
+  const [isNavigatingLive, setIsNavigatingLive] = useState(false)
+  const [activeNavStepIndex, setActiveNavStepIndex] = useState(0)
+  const [isAutoSimulating, setIsAutoSimulating] = useState(false)
+  const turnMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  const navSimIntervalRef = useRef<any>(null)
+  const lastSpokenTurnIndexRef = useRef<number | null>(null)
+
+  // Mutable ref for geolocate progress tracking
+  const liveNavStateRef = useRef({
+    isNavigatingLive: false,
+    routeResult: null as RouteResult | null,
+    activeNavStepIndex: 0,
+  })
+  liveNavStateRef.current = {
+    isNavigatingLive,
+    routeResult,
+    activeNavStepIndex,
+  }
+
   // Contribute state
   const [contributeMode, setContributeMode] = useState<'place' | 'road' | 'update'>('place')
   const [newPlaceName, setNewPlaceName] = useState('')
@@ -217,6 +286,12 @@ export default function CampusNavigator({
     return () => {
       cancelAnimationFrame(anim)
       stopSpeaking()
+      if (navSimIntervalRef.current) {
+        clearInterval(navSimIntervalRef.current)
+      }
+      if (turnMarkerRef.current) {
+        turnMarkerRef.current.remove()
+      }
     }
   }, [])
 
@@ -359,6 +434,19 @@ export default function CampusNavigator({
       } else if (state.activeTab === 'contribute' && state.contributeMode === 'place') {
         setNewPlaceLng(longitude.toFixed(6))
         setNewPlaceLat(latitude.toFixed(6))
+      }
+
+      // Check live turn progress if currently navigating
+      const liveNav = liveNavStateRef.current
+      if (liveNav.isNavigatingLive && liveNav.routeResult && liveNav.routeResult.steps) {
+        const curIdx = liveNav.activeNavStepIndex
+        const curStep = liveNav.routeResult.steps[curIdx]
+        if (curStep && curStep.location) {
+          const distToTurn = getDistanceMeters([longitude, latitude], curStep.location)
+          if (distToTurn < 25 && curIdx < liveNav.routeResult.steps.length - 1) {
+            advanceToTurnRef.current(curIdx + 1, true)
+          }
+        }
       }
     })
 
@@ -953,6 +1041,143 @@ export default function CampusNavigator({
     })
   }
 
+  // Advance to a specific turn, focus map camera with 3D driver's perspective, and speak directions in kid voice
+  const advanceToTurn = (stepIndex: number, shouldSpeak: boolean = true) => {
+    if (!routeResult || !routeResult.steps || routeResult.steps.length === 0) return
+    const totalSteps = routeResult.steps.length
+    const clampedIndex = Math.max(0, Math.min(stepIndex, totalSteps - 1))
+    setActiveNavStepIndex(clampedIndex)
+    setActiveSpeechStepIdx(clampedIndex)
+
+    const step = routeResult.steps[clampedIndex]
+    const isArrival = clampedIndex >= totalSteps - 1 || (step.instruction || '').toLowerCase().includes('arrive')
+
+    // Update Turn Beacon Marker on Map
+    if (mapRef.current) {
+      let turnLocation: [number, number] | null = step.location || null
+      if (!turnLocation && routeResult.geometry?.coordinates) {
+        const coords = routeResult.geometry.coordinates
+        const sampleIdx = Math.min(
+          Math.floor((clampedIndex / totalSteps) * coords.length),
+          coords.length - 1,
+        )
+        turnLocation = coords[sampleIdx]
+      }
+
+      if (turnLocation) {
+        if (!turnMarkerRef.current) {
+          const el = document.createElement('div')
+          el.className = 'turn-beacon-marker pointer-events-none'
+          el.innerHTML = `
+            <div class="relative flex items-center justify-center">
+              <span class="animate-ping absolute inline-flex h-10 w-10 rounded-full bg-orange-400 opacity-75"></span>
+              <div class="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 text-white shadow-xl ring-4 ring-white/90 font-black text-sm">
+                ${isArrival ? '🏁' : '🧭'}
+              </div>
+            </div>
+          `
+          turnMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat(turnLocation)
+            .addTo(mapRef.current)
+        } else {
+          turnMarkerRef.current.setLngLat(turnLocation)
+        }
+
+        // Camera follows the turn smoothly
+        const nextStep = clampedIndex < totalSteps - 1 ? routeResult.steps[clampedIndex + 1] : null
+        const nextCoord = nextStep?.location || null
+        const bearing = nextCoord ? getBearing(turnLocation, nextCoord) : undefined
+
+        mapRef.current.easeTo({
+          center: turnLocation,
+          zoom: 18,
+          pitch: 54,
+          bearing: bearing !== undefined ? bearing : -15,
+          duration: 1200,
+        })
+      }
+    }
+
+    // Accurately speak turn direction in male kid voice
+    if (shouldSpeak && voiceAssistanceEnabled) {
+      const speech = buildTurnAlertSpeech(
+        clampedIndex,
+        totalSteps,
+        step.instruction,
+        step.distance,
+        isArrival,
+      )
+      setGuideSpeakingText(speech)
+      lastSpokenTurnIndexRef.current = clampedIndex
+      speakText(speech, {
+        onStart: () => setIsGuideSpeaking(true),
+        onEnd: () => setIsGuideSpeaking(false),
+        onError: () => setIsGuideSpeaking(false),
+      })
+    }
+  }
+
+  // Ref to always have latest advanceToTurn in geolocate callback
+  const advanceToTurnRef = useRef(advanceToTurn)
+  advanceToTurnRef.current = advanceToTurn
+
+  // Start Live Turn-by-Turn Navigation
+  const startLiveNavigation = () => {
+    if (!routeResult || !routeResult.steps || routeResult.steps.length === 0) return
+    setIsNavigatingLive(true)
+    advanceToTurn(0, true)
+  }
+
+  // Stop Live Navigation
+  const stopLiveNavigation = () => {
+    setIsNavigatingLive(false)
+    setIsAutoSimulating(false)
+    if (navSimIntervalRef.current) {
+      clearInterval(navSimIntervalRef.current)
+      navSimIntervalRef.current = null
+    }
+    if (turnMarkerRef.current) {
+      turnMarkerRef.current.remove()
+      turnMarkerRef.current = null
+    }
+    handleStopGuideSpeaking()
+  }
+
+  // Auto-simulate turn walkthrough
+  const toggleAutoSimulation = () => {
+    if (!isNavigatingLive) {
+      setIsNavigatingLive(true)
+    }
+
+    if (isAutoSimulating) {
+      setIsAutoSimulating(false)
+      if (navSimIntervalRef.current) {
+        clearInterval(navSimIntervalRef.current)
+        navSimIntervalRef.current = null
+      }
+    } else {
+      setIsAutoSimulating(true)
+      if (navSimIntervalRef.current) {
+        clearInterval(navSimIntervalRef.current)
+      }
+
+      navSimIntervalRef.current = setInterval(() => {
+        setActiveNavStepIndex((prev) => {
+          if (!routeResult || !routeResult.steps) return prev
+          if (prev >= routeResult.steps.length - 1) {
+            clearInterval(navSimIntervalRef.current)
+            navSimIntervalRef.current = null
+            setIsAutoSimulating(false)
+            return prev
+          }
+          const nextIdx = prev + 1
+          advanceToTurn(nextIdx, true)
+          return nextIdx
+        })
+      }, 5500)
+    }
+  }
+
   // Handle Calculate Route
   const handleCalculateRoute = async (overrideDestId?: string, overrideOriginId?: string) => {
     setRouteError(null)
@@ -1064,7 +1289,7 @@ export default function CampusNavigator({
 
   // Clear Route
   const handleClearRoute = () => {
-    handleStopGuideSpeaking()
+    stopLiveNavigation()
     setRouteResult(null)
     setRouteError(null)
     if (mapRef.current) {
@@ -1759,6 +1984,16 @@ export default function CampusNavigator({
                     </div>
                   </div>
 
+                  {/* Start Live Turn-by-Turn Navigation Button */}
+                  <button
+                    type="button"
+                    onClick={startLiveNavigation}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 p-3.5 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-orange-500/25 hover:from-orange-700 hover:to-amber-700 active:scale-95 transition cursor-pointer"
+                  >
+                    <NavIcon className="h-4 w-4" />
+                    <span>🚀 Start Live Turn Navigation</span>
+                  </button>
+
                   <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 p-4 text-white shadow-md">
                     <div>
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-white/80">
@@ -1785,26 +2020,33 @@ export default function CampusNavigator({
                         Turn-by-Turn Guidance ({routeResult.steps.length} steps)
                       </h5>
                       <span className="text-[10px] text-slate-400 font-semibold">
-                        Tap speaker to listen
+                        Click step to navigate
                       </span>
                     </div>
 
                     <div className="space-y-2">
                       {routeResult.steps.map((step, idx) => {
+                        const isThisStepActive = isNavigatingLive && activeNavStepIndex === idx
                         const isThisStepSpeaking = isGuideSpeaking && activeSpeechStepIdx === idx
                         return (
                           <div
                             key={idx}
-                            className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-all ${
-                              isThisStepSpeaking
-                                ? 'border-orange-500 bg-orange-50/90 shadow-sm ring-1 ring-orange-300'
-                                : 'border-orange-200/60 bg-[#fffcf9] text-slate-800 hover:border-orange-300'
+                            onClick={() => {
+                              advanceToTurn(idx, true)
+                              if (!isNavigatingLive) {
+                                setIsNavigatingLive(true)
+                              }
+                            }}
+                            className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-all cursor-pointer ${
+                              isThisStepActive
+                                ? 'border-orange-500 bg-orange-50/95 shadow-sm ring-2 ring-orange-400/40'
+                                : 'border-orange-200/60 bg-[#fffcf9] text-slate-800 hover:border-orange-300 hover:bg-orange-50/40'
                             }`}
                           >
                             <div
                               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${
-                                isThisStepSpeaking
-                                  ? 'bg-orange-600 text-white'
+                                isThisStepActive
+                                  ? 'bg-orange-600 text-white shadow-xs'
                                   : 'bg-orange-100 text-orange-600'
                               }`}
                             >
@@ -1820,11 +2062,12 @@ export default function CampusNavigator({
                             {/* Audio Step Trigger Button */}
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 if (isThisStepSpeaking) {
                                   handleStopGuideSpeaking()
                                 } else {
-                                  speakSingleStep(idx)
+                                  advanceToTurn(idx, true)
                                 }
                               }}
                               className={`shrink-0 rounded-lg p-1.5 transition cursor-pointer ${
@@ -1832,7 +2075,7 @@ export default function CampusNavigator({
                                   ? 'bg-orange-600 text-white shadow-xs'
                                   : 'text-slate-400 hover:text-orange-600 hover:bg-orange-100/60'
                               }`}
-                              title={isThisStepSpeaking ? 'Stop speaking step' : 'Speak this step'}
+                              title={isThisStepSpeaking ? 'Stop speaking step' : 'Speak this turn in kid voice'}
                             >
                               {isThisStepSpeaking ? (
                                 <Square className="h-3.5 w-3.5 fill-current" />
@@ -2447,6 +2690,117 @@ export default function CampusNavigator({
               <span>{is3dMode ? '3D View (52°)' : '2D Top-Down'}</span>
             </button>
           </div>
+
+          {/* Live Turn-by-Turn Navigation HUD (Updates every turn and speaks via kid voice) */}
+          {isNavigatingLive && routeResult && routeResult.steps && routeResult.steps.length > 0 && (
+            <div className="absolute top-3 inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[500px] z-30 animate-in slide-in-from-top duration-300">
+              <div className="rounded-2xl border border-orange-400/40 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-md text-white">
+                <div className="flex items-start justify-between gap-3">
+                  {/* Left: Maneuver Icon */}
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md ring-2 ring-white/20">
+                    {getManeuverIcon(
+                      routeResult.steps[activeNavStepIndex]?.maneuverType,
+                      routeResult.steps[activeNavStepIndex]?.instruction,
+                    )}
+                  </div>
+
+                  {/* Center: Turn Instructions & Distance */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-orange-600/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-200">
+                        Turn {activeNavStepIndex + 1} of {routeResult.steps.length}
+                      </span>
+                      {routeResult.steps[activeNavStepIndex]?.distance > 0 && (
+                        <span className="text-xs font-black text-amber-400">
+                          In {routeResult.steps[activeNavStepIndex].distance} m
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-0.5 text-sm font-black leading-snug text-white line-clamp-2">
+                      {routeResult.steps[activeNavStepIndex]?.instruction || 'Continue straight'}
+                    </p>
+
+                    {/* Next Turn Preview */}
+                    {activeNavStepIndex < routeResult.steps.length - 1 && (
+                      <p className="mt-1 text-[11px] font-medium text-slate-400 truncate">
+                        Then: {routeResult.steps[activeNavStepIndex + 1]?.instruction}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Right: Exit Navigation */}
+                  <button
+                    type="button"
+                    onClick={stopLiveNavigation}
+                    className="shrink-0 rounded-full p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+                    title="Exit Navigation"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Bottom Action Bar: Prev Turn, Speak, Next Turn, Auto Sim */}
+                <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={activeNavStepIndex === 0}
+                      onClick={() => advanceToTurn(activeNavStepIndex - 1, true)}
+                      className="flex items-center gap-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-[11px] font-bold text-slate-200 transition cursor-pointer disabled:opacity-40"
+                      title="Previous Turn"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" /> Prev
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={activeNavStepIndex >= routeResult.steps.length - 1}
+                      onClick={() => advanceToTurn(activeNavStepIndex + 1, true)}
+                      className="flex items-center gap-1 rounded-lg bg-orange-600 hover:bg-orange-500 px-3 py-1 text-[11px] font-bold text-white transition cursor-pointer disabled:opacity-40 shadow-xs"
+                      title="Next Turn"
+                    >
+                      Next <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => advanceToTurn(activeNavStepIndex, true)}
+                      className="flex items-center gap-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-[11px] font-bold text-slate-200 transition cursor-pointer"
+                      title="Replay this turn audio in kid voice"
+                    >
+                      <Volume2 className="h-3.5 w-3.5 text-orange-400" />
+                      <span>Replay</span>
+                    </button>
+                  </div>
+
+                  {/* Auto-Walk Simulator */}
+                  <button
+                    type="button"
+                    onClick={toggleAutoSimulation}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${
+                      isAutoSimulating
+                        ? 'bg-amber-500 text-slate-950 font-black animate-pulse'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                    }`}
+                    title={isAutoSimulating ? 'Pause Route Simulation' : 'Auto-simulate turn walkthrough'}
+                  >
+                    {isAutoSimulating ? (
+                      <>
+                        <Pause className="h-3 w-3 fill-current" />
+                        <span>Simulating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-3 w-3 fill-current" />
+                        <span>Simulate Walk</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Lost & Found Handover Meeting Point Banner */}
           {initialLocationFocus && (
