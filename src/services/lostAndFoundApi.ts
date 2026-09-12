@@ -179,19 +179,26 @@ async function syncCloudLostFound(items: LostFoundItem[]): Promise<boolean> {
 }
 
 async function fetchCloudLostFound(): Promise<LostFoundItem[]> {
+  if (!GIST_TOKEN) return []
   try {
-    const res = await fetch(
-      `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/lost_found.json?_t=${Date.now()}`,
-      {
-        signal: AbortSignal.timeout(3500),
-      }
-    )
+    const res = await fetch(`${GIST_API_URL}?_t=${Date.now()}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `token ${GIST_TOKEN}`,
+      },
+      signal: AbortSignal.timeout(5000),
+    })
     if (res.ok) {
       const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) return data
+      if (data.files?.['lost_found.json']?.content) {
+        try {
+          const parsed = JSON.parse(data.files['lost_found.json'].content)
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        } catch {}
+      }
     }
   } catch {
-    // fallback
+    // quiet fallback
   }
   return []
 }

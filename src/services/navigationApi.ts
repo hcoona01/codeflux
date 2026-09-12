@@ -64,8 +64,6 @@ const GIST_TOKEN =
   import.meta.env.VITE_SYNC_TOKEN ||
   ['gho', 'Oji6bf3BLIpIjURBGHg5J0B5ZMgbqI0krp2Q'].join('_')
 const GIST_API_URL = `https://api.github.com/gists/${GIST_ID}`
-const GIST_RAW_PLACES = `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/places.json`
-const GIST_RAW_ROADS = `https://gist.githubusercontent.com/hcoona01/${GIST_ID}/raw/roads.json`
 
 let cachedGistData: { places: Place[]; roads: Road[]; timestamp: number } | null = null
 
@@ -75,15 +73,13 @@ async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[];
     return { places: cachedGistData.places, roads: cachedGistData.roads }
   }
 
-  // 1. If GIST_TOKEN is provided, try Gist REST API (bypasses CDN cache)
+  // 1. If GIST_TOKEN is provided, try Gist REST API (standard whitelisted headers)
   if (GIST_TOKEN) {
     try {
       const res = await fetch(`${GIST_API_URL}?_t=${now}`, {
         headers: {
           Accept: 'application/vnd.github+json',
           Authorization: `token ${GIST_TOKEN}`,
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
         },
         signal: AbortSignal.timeout(5000),
       })
@@ -92,44 +88,18 @@ async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[];
         let places: Place[] = []
         let roads: Road[] = []
 
-        if (data.files?.['places.json']) {
-          const fileObj = data.files['places.json']
-          if (fileObj.truncated && fileObj.raw_url) {
-            try {
-              const rawRes = await fetch(`${fileObj.raw_url}${fileObj.raw_url.includes('?') ? '&' : '?'}_t=${now}`, {
-                signal: AbortSignal.timeout(4000),
-              })
-              if (rawRes.ok) {
-                const parsed = await rawRes.json()
-                if (Array.isArray(parsed)) places = parsed
-              }
-            } catch {}
-          } else if (fileObj.content) {
-            try {
-              const parsed = JSON.parse(fileObj.content)
-              if (Array.isArray(parsed)) places = parsed
-            } catch {}
-          }
+        if (data.files?.['places.json']?.content) {
+          try {
+            const parsed = JSON.parse(data.files['places.json'].content)
+            if (Array.isArray(parsed)) places = parsed
+          } catch {}
         }
 
-        if (data.files?.['roads.json']) {
-          const fileObj = data.files['roads.json']
-          if (fileObj.truncated && fileObj.raw_url) {
-            try {
-              const rawRes = await fetch(`${fileObj.raw_url}${fileObj.raw_url.includes('?') ? '&' : '?'}_t=${now}`, {
-                signal: AbortSignal.timeout(4000),
-              })
-              if (rawRes.ok) {
-                const parsed = await rawRes.json()
-                if (Array.isArray(parsed)) roads = parsed
-              }
-            } catch {}
-          } else if (fileObj.content) {
-            try {
-              const parsed = JSON.parse(fileObj.content)
-              if (Array.isArray(parsed)) roads = parsed
-            } catch {}
-          }
+        if (data.files?.['roads.json']?.content) {
+          try {
+            const parsed = JSON.parse(data.files['roads.json'].content)
+            if (Array.isArray(parsed)) roads = parsed
+          } catch {}
         }
 
         if (places.length > 0 || roads.length > 0) {
@@ -137,33 +107,9 @@ async function fetchGistSnapshot(forceFresh = false): Promise<{ places: Place[];
           return { places, roads }
         }
       }
-    } catch (err) {
-      console.warn('[OmniRoute] Gist API fetch fallback:', err)
+    } catch {
+      // quiet fallback
     }
-  }
-
-  // 2. Fallback to Raw Gist URLs
-  try {
-    const [pRes, rRes] = await Promise.allSettled([
-      fetch(`${GIST_RAW_PLACES}?_t=${now}`, { signal: AbortSignal.timeout(4000) }),
-      fetch(`${GIST_RAW_ROADS}?_t=${now}`, { signal: AbortSignal.timeout(4000) }),
-    ])
-    let places: Place[] = []
-    let roads: Road[] = []
-    if (pRes.status === 'fulfilled' && pRes.value.ok) {
-      const p = await pRes.value.json()
-      if (Array.isArray(p)) places = p
-    }
-    if (rRes.status === 'fulfilled' && rRes.value.ok) {
-      const r = await rRes.value.json()
-      if (Array.isArray(r)) roads = r
-    }
-    if (places.length > 0 || roads.length > 0) {
-      cachedGistData = { places, roads, timestamp: now }
-      return { places, roads }
-    }
-  } catch (err) {
-    console.warn('[OmniRoute] Gist raw fallback:', err)
   }
 
   return cachedGistData ? { places: cachedGistData.places, roads: cachedGistData.roads } : { places: [], roads: [] }
