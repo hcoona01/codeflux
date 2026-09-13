@@ -353,20 +353,21 @@ export default function CampusEventsHub({
   }, [events])
 
   return (
-    <div className="relative w-full h-full min-h-screen bg-[#faf6f1] text-slate-800 flex flex-col overflow-y-auto">
-      {/* Top Navbar: Styled identically to LostAndFoundHub & Navigator */}
-      <header className="sticky top-0 z-40 w-full border-b border-orange-200/50 bg-[#fff9f4]/95 backdrop-blur-md shadow-xs">
+    <div className="relative w-full h-full h-[100dvh] max-h-[100dvh] bg-[#faf6f1] text-slate-800 flex flex-col overflow-hidden">
+      {/* Top Navbar: Styled identically to LostAndFoundHub & Navigator - Locked at top */}
+      <header className="shrink-0 z-40 w-full border-b border-orange-200/50 bg-[#fff9f4]/98 backdrop-blur-md shadow-xs">
         <div className="w-full flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Left Side: Return to Campus Showcase & Brand */}
           <div className="flex items-center gap-3 sm:gap-4">
             <button
               type="button"
               onClick={onBackToHome}
-              className="group flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs hover:border-orange-400 hover:bg-orange-100/70 hover:text-orange-950 transition cursor-pointer"
+              className="group flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-bold text-slate-800 shadow-xs hover:border-orange-400 hover:bg-orange-100/80 hover:text-orange-950 active:scale-95 transition cursor-pointer shrink-0"
               title="Return to Campus Showcase"
+              aria-label="Return to Campus Showcase"
             >
-              <Home className="h-3.5 w-3.5 transition-transform group-hover:scale-110 text-orange-600" />
-              <span className="hidden xs:inline">Campus Showcase</span>
+              <Home className="h-4 w-4 transition-transform group-hover:scale-110 text-orange-600 shrink-0" />
+              <span className="hidden sm:inline">Campus Showcase</span>
             </button>
 
             <div className="h-5 w-px bg-orange-200/60 hidden sm:block" />
@@ -458,8 +459,10 @@ export default function CampusEventsHub({
         </div>
       </header>
 
-      {/* Hero Banner Section: Warmth & Layout identical to LostAndFoundHub */}
-      <section className="relative px-4 sm:px-8 pt-6 pb-5 bg-gradient-to-b from-[#fff5eb] via-[#fff9f4] to-[#faf6f1] border-b border-orange-200/50">
+      {/* Scrollable Page Body (Header stays permanently fixed at top) */}
+      <div className="flex-1 w-full overflow-y-auto overscroll-contain flex flex-col">
+        {/* Hero Banner Section: Warmth & Layout identical to LostAndFoundHub */}
+        <section className="relative px-4 sm:px-8 pt-6 pb-5 bg-gradient-to-b from-[#fff5eb] via-[#fff9f4] to-[#faf6f1] border-b border-orange-200/50 shrink-0">
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -839,6 +842,7 @@ export default function CampusEventsHub({
           </div>
         )}
       </main>
+      </div>
 
       {/* Post or Edit Event Modal */}
       {isCreateModalOpen && (

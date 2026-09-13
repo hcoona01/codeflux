@@ -163,10 +163,33 @@ export default function LostFoundChatModal({
     }
   }
 
+  const handleClose = () => {
+    (document.activeElement as HTMLElement)?.blur()
+    window.scrollTo(0, 0)
+    onClose()
+  }
+
+  const handleMapRedirect = (loc: {
+    lng: number
+    lat: number
+    label: string
+    note?: string
+    itemId?: string
+  }) => {
+    (document.activeElement as HTMLElement)?.blur()
+    window.scrollTo(0, 0)
+    onRedirectToMap(loc)
+  }
+
   const isResolved = item.status === 'resolved'
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleClose()
+      }}
+    >
       <div className="relative flex flex-col w-full max-w-2xl h-[92vh] max-h-[780px] bg-[#fffdfb] border border-orange-200/80 rounded-3xl shadow-2xl overflow-hidden text-slate-900">
         
         {/* Header: Navigation Styled */}
@@ -229,7 +252,7 @@ export default function LostFoundChatModal({
             )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-orange-100/60 transition cursor-pointer"
               aria-label="Close"
             >
@@ -250,7 +273,7 @@ export default function LostFoundChatModal({
             <button
               type="button"
               onClick={() =>
-                onRedirectToMap({
+                handleMapRedirect({
                   lng: item.longitude!,
                   lat: item.latitude!,
                   label: item.locationName || item.title,
@@ -356,7 +379,7 @@ export default function LostFoundChatModal({
                         <button
                           type="button"
                           onClick={() =>
-                            onRedirectToMap({
+                            handleMapRedirect({
                               lng: msg.taggedLocation!.longitude,
                               lat: msg.taggedLocation!.latitude,
                               label: msg.taggedLocation!.name,

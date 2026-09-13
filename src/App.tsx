@@ -83,6 +83,7 @@ function App() {
     setIsTransitioning(true)
     setTimeout(() => {
       setCurrentView('navigator')
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -92,6 +93,7 @@ function App() {
     setIsTransitioning(true)
     setTimeout(() => {
       setCurrentView('lost-and-found')
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -101,6 +103,7 @@ function App() {
     setIsTransitioning(true)
     setTimeout(() => {
       setCurrentView('events')
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -112,6 +115,7 @@ function App() {
     setIsTransitioning(true)
     setTimeout(() => {
       setCurrentView('navigator')
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -124,6 +128,7 @@ function App() {
       setInitialCategory('all')
       setMeetingLocationFocus(null)
       setEventLocationFocus(null)
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -133,6 +138,7 @@ function App() {
     setTimeout(() => {
       setCurrentView('lost-and-found')
       window.location.hash = '#lost-and-found'
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -142,6 +148,7 @@ function App() {
     setTimeout(() => {
       setCurrentView('events')
       window.location.hash = '#events'
+      window.scrollTo(0, 0)
       setIsTransitioning(false)
     }, 200)
   }
@@ -150,7 +157,7 @@ function App() {
     <div className="relative w-full h-full h-[100dvh] max-h-[100dvh] bg-[#070b14] overflow-hidden text-white">
       <div
         className={`w-full h-full transition-opacity duration-300 ease-in-out ${
-          isTransitioning ? 'opacity-0 pointer-events-none scale-[0.99]' : 'opacity-100 scale-100'
+          isTransitioning ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       >
         {currentView === 'hero' ? (

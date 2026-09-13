@@ -16,18 +16,19 @@ export default function NavigatorHeader({
   onGoHome,
 }: NavigatorHeaderProps) {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-orange-200/50 bg-[#fff9f4]/95 backdrop-blur-md shadow-xs">
+    <header className="shrink-0 z-40 w-full border-b border-orange-200/50 bg-[#fff9f4]/98 backdrop-blur-md shadow-xs">
       <div className="w-full flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Left Side: Return to Home Showcase & Brand Badge (Pinned to Left Corner) */}
         <div className="flex items-center gap-3 sm:gap-4">
           <a
             href="/"
             onClick={onGoHome}
-            className="group flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs hover:border-orange-400 hover:bg-orange-100/70 hover:text-orange-950 transition cursor-pointer"
-            title="Return to Home Showcase"
+            className="group flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-[#fff5ec] px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-bold text-slate-800 shadow-xs hover:border-orange-400 hover:bg-orange-100/80 hover:text-orange-950 active:scale-95 transition cursor-pointer shrink-0"
+            title="Return to Campus Showcase"
+            aria-label="Return to Campus Showcase"
           >
-            <Home className="h-3.5 w-3.5 transition-transform group-hover:scale-110 text-orange-600" />
-            <span className="hidden xs:inline">Campus Showcase</span>
+            <Home className="h-4 w-4 transition-transform group-hover:scale-110 text-orange-600 shrink-0" />
+            <span className="hidden sm:inline">Campus Showcase</span>
           </a>
 
           <div className="h-5 w-px bg-orange-200/60 hidden sm:block" />
