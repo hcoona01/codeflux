@@ -147,7 +147,7 @@ function App() {
   }
 
   return (
-    <div className="relative w-full h-screen min-h-screen bg-[#070b14] overflow-hidden text-white">
+    <div className="relative w-full h-full h-[100dvh] max-h-[100dvh] bg-[#070b14] overflow-hidden text-white">
       <div
         className={`w-full h-full transition-opacity duration-300 ease-in-out ${
           isTransitioning ? 'opacity-0 pointer-events-none scale-[0.99]' : 'opacity-100 scale-100'

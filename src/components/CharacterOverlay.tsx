@@ -15,6 +15,7 @@ interface CharacterOverlayProps {
   speakingText?: string | null
   onStopSpeaking?: () => void
   onReplaySpeech?: () => void
+  isMobileDrawerOpen?: boolean
 }
 
 const TIPS = [
@@ -35,6 +36,7 @@ export default function CharacterOverlay({
   speakingText = null,
   onStopSpeaking,
   onReplaySpeech,
+  isMobileDrawerOpen = false,
 }: CharacterOverlayProps) {
   const [showBubble, setShowBubble] = useState(true)
   const [tipIndex, setTipIndex] = useState(0)
@@ -56,12 +58,18 @@ export default function CharacterOverlay({
   }, [isSpeaking])
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 select-none pointer-events-auto">
+    <div
+      className={`fixed z-30 select-none transition-all duration-300 pointer-events-auto ${
+        isMobileDrawerOpen
+          ? 'opacity-0 pointer-events-none translate-y-6 sm:opacity-100 sm:pointer-events-auto sm:translate-y-0 sm:bottom-6 sm:right-6'
+          : 'opacity-100 pointer-events-auto translate-y-0 bottom-[calc(98px+env(safe-area-inset-bottom,0px))] right-3 sm:bottom-6 sm:right-6'
+      }`}
+    >
       <div className="relative flex flex-col items-end">
         {/* Interactive Speech Bubble */}
         {showBubble && (
           <div
-            className={`mb-2 max-w-[280px] sm:max-w-[320px] rounded-2xl border bg-white/95 p-3.5 shadow-2xl backdrop-blur-md transition-all duration-300 ${
+            className={`mb-2 max-w-[280px] sm:max-w-[320px] max-h-[38dvh] overflow-y-auto no-scrollbar rounded-2xl border bg-white/95 p-3.5 shadow-2xl backdrop-blur-md transition-all duration-300 ${
               isSpeaking
                 ? 'border-orange-400 ring-2 ring-orange-400/30 shadow-orange-500/20'
                 : 'border-orange-200'

@@ -1837,7 +1837,7 @@ export default function CampusNavigator({
 
   return (
     <div
-      className={`relative flex h-screen w-full flex-col overflow-hidden bg-[#fff8f2] text-slate-900 transition-all duration-500 ease-out ${pageVisible && !isExiting ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+      className={`relative flex h-[100dvh] h-full max-h-[100dvh] w-full flex-col overflow-hidden bg-[#fff8f2] text-slate-900 transition-all duration-500 ease-out ${pageVisible && !isExiting ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
         }`}
       style={{ fontFamily: 'Inter, sans-serif' }}
     >
@@ -1855,20 +1855,35 @@ export default function CampusNavigator({
       <div className="relative flex flex-1 overflow-hidden">
         {/* Left Interactive Sidebar (Responsive: floating sheet on mobile, fixed panel on desktop) */}
         <aside
-          className={`absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-orange-200/50 bg-[#fffbf8]/95 backdrop-blur-md shadow-2xl transition-all duration-300 sm:relative sm:inset-auto sm:h-full sm:w-[420px] sm:border-r sm:border-t-0 sm:border-orange-200/50 ${mobileDrawerOpen ? 'h-[75vh] sm:h-full' : 'h-16 sm:h-full'
+          className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl border-t border-orange-200/60 bg-[#fffbf8]/98 backdrop-blur-xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-all duration-300 sm:rounded-none sm:relative sm:inset-auto sm:h-full sm:w-[420px] sm:border-r sm:border-t-0 sm:border-orange-200/50 ${mobileDrawerOpen
+            ? 'h-[76dvh] max-h-[82dvh] sm:h-full sm:max-h-none'
+            : 'h-[calc(86px+env(safe-area-inset-bottom,0px))] sm:h-full pb-[env(safe-area-inset-bottom,0px)]'
             }`}
         >
           {/* Mobile Drawer Drag Handle & Toggle */}
-          <div className="flex sm:hidden items-center justify-between border-b border-orange-200/40 px-4 py-2 bg-[#fff4eb]/80">
+          <div
+            onClick={() => setMobileDrawerOpen(!mobileDrawerOpen)}
+            className="flex sm:hidden items-center justify-between border-b border-orange-200/40 px-4 py-2 bg-[#fff4eb]/90 cursor-pointer active:bg-orange-100/70 select-none shrink-0"
+          >
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-10 rounded-full bg-orange-300" />
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 {activeTab}
               </span>
+              {!mobileDrawerOpen && (
+                <span className="text-[10px] font-semibold text-orange-600 bg-orange-100/70 px-1.5 py-0.5 rounded-full">
+                  Tap to expand
+                </span>
+              )}
             </div>
             <button
-              onClick={() => setMobileDrawerOpen(!mobileDrawerOpen)}
-              className="rounded-lg p-1 text-slate-500 hover:bg-orange-100 cursor-pointer"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMobileDrawerOpen(!mobileDrawerOpen)
+              }}
+              className="rounded-lg p-1 text-slate-500 hover:bg-orange-100 cursor-pointer active:scale-95 transition"
+              aria-label={mobileDrawerOpen ? 'Collapse menu' : 'Expand menu'}
             >
               {mobileDrawerOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </button>
@@ -3349,6 +3364,7 @@ export default function CampusNavigator({
               setActiveTab('directions')
               handleCalculateRoute(destId, 'gps')
             }}
+            isMobileDrawerOpen={mobileDrawerOpen}
           />
         </div>
       </div>
